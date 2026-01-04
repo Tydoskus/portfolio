@@ -56,6 +56,9 @@
     <div style="opacity:.85;margin-top:6px">
       New: HUD shows a live “load chart” (rated capacity at current radius + boom length) plus cable tension vs cable WLL.
     </div>
+    <div style="opacity:.85;margin-top:6px">
+      Conveyor spawns random loads on the left. Drop them in the green zone to earn 1% of their weight in cash.
+    </div>
   </div>
 
   <canvas id="c"></canvas>
@@ -178,17 +181,11 @@
       r: 0.42,
       massKg,
       picked: false,
-      delivered: false,
       sleep: 0,
     };
   }
-  const crates0 = [
-    makeCrate("A", 2.5, groundY - 0.42, 800),
-    makeCrate("B", 4.4, groundY - 0.42, 1400),
-    makeCrate("C", 6.6, groundY - 0.42, 2200),
-    makeCrate("D", 8.7, groundY - 0.42, 3200),
-  ];
   let crates = [];
+  let nextCrateId = 1;
 
   // Target truck bed zone
   const truck = {
@@ -201,8 +198,22 @@
     zoneW: 3.8,
   };
 
-  let score = 0;
+  const conveyor = {
+    startX: -7.5,
+    endX: -16.5,
+    y: groundY,
+    speed: -0.7,
+    spawnMin: 2.2,
+    spawnMax: 4.2,
+    maxCrates: 7,
+    boxW: 2.3,
+    boxH: 0.9,
+  };
+
+  let deliveredCount = 0;
+  let money = 0;
   let time = 0;
+  let spawnTimer = 0;
 
   function reset() {
     crane.x = -6.5;
@@ -223,9 +234,12 @@
     load.massKg = load.hookMassKg;
     load.tensionN = 0;
 
-    crates = crates0.map(c => ({...c}));
-    score = 0;
+    crates = [];
+    nextCrateId = 1;
+    deliveredCount = 0;
+    money = 0;
     time = 0;
+    spawnTimer = 0.6;
   }
   reset();
   document.getElementById('restart').addEventListener('click', reset);
@@ -274,6 +288,28 @@
     return Math.max(0, Math.min(a, b, c));
   }
 
+  function bestRatedKg() {
+    const minRadius = 0.35;
+    return Math.max(0, Math.min(
+      tipCapacityKgAtRadius(minRadius),
+      boomCapacityKgAtLength(crane.Lmin),
+      cableCapacityKg()
+    ));
+  }
+
+  function randomLoadKg() {
+    const best = bestRatedKg();
+    const minKg = Math.max(100, best * 0.1);
+    const maxKg = Math.max(minKg, Math.min(10000, best * 3));
+    return Math.round(lerp(minKg, maxKg, Math.random()));
+  }
+
+  function spawnCrate() {
+    if (crates.length >= conveyor.maxCrates) return;
+    const massKg = randomLoadKg();
+    crates.push(makeCrate(`L${nextCrateId++}`, conveyor.startX, groundY - 0.42, massKg));
+  }
+
   // ---------- Grabbing ----------
   function tryGrabOrRelease() {
     if (crane.tipped) return;
@@ -281,7 +317,7 @@
     if (load.carryingId) {
       const id = load.carryingId;
       const c = crates.find(k => k.id === id);
-      if (c && !c.delivered) {
+      if (c) {
         c.picked = false;
         c.x = load.x; c.y = load.y;
         c.vx = load.vx; c.vy = load.vy;
@@ -294,7 +330,7 @@
 
     let best = null, bestD = 1e9;
     for (const c of crates) {
-      if (c.delivered || c.picked) continue;
+      if (c.picked) continue;
       const d = Math.hypot(c.x - load.x, c.y - load.y);
       if (d < 0.85 && d < bestD) { bestD = d; best = c; }
     }
@@ -440,9 +476,15 @@
     }
     collideCircleWithFloor(load);
 
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnCrate();
+      spawnTimer = lerp(conveyor.spawnMin, conveyor.spawnMax, Math.random());
+    }
+
     // Crates
-    for (const c of crates) {
-      if (c.delivered) continue;
+    for (let idx = crates.length - 1; idx >= 0; idx--) {
+      const c = crates[idx];
 
       if (c.picked && load.carryingId === c.id) {
         c.x = load.x;
@@ -456,6 +498,15 @@
       c.vx *= (1 - drag * dt);
       c.vy *= (1 - drag * dt);
       c.vy += G * dt;
+
+      const onBelt = c.x <= conveyor.startX + 0.1
+        && c.x >= conveyor.endX - 0.1
+        && c.y >= groundY - c.r - 0.08;
+      if (onBelt) {
+        c.vx = conveyor.speed;
+        c.vy = 0;
+        c.y = groundY - c.r;
+      }
 
       c.x += c.vx * dt;
       c.y += c.vy * dt;
@@ -482,8 +533,14 @@
       const zoneLeft = truck.zoneX - truck.zoneW/2;
       const zoneRight = truck.zoneX + truck.zoneW/2;
       if (c.sleep > 0.8 && c.x > zoneLeft && c.x < zoneRight) {
-        c.delivered = true;
-        score += 1;
+        deliveredCount += 1;
+        money += c.massKg * 0.01;
+        crates.splice(idx, 1);
+        continue;
+      }
+
+      if (!c.picked && c.x < conveyor.endX - conveyor.boxW * 0.65) {
+        crates.splice(idx, 1);
       }
     }
 
@@ -539,6 +596,49 @@
     ctx.moveTo(0, yG);
     ctx.lineTo(canvas.width, yG);
     ctx.stroke();
+
+    // Conveyor
+    {
+      const beltH = 0.35;
+      const beltLeft = conveyor.endX;
+      const beltRight = conveyor.startX;
+      const p1 = w2s(beltLeft, conveyor.y - beltH);
+      const p2 = w2s(beltRight, conveyor.y);
+
+      ctx.fillStyle = 'rgba(150,180,220,0.10)';
+      ctx.strokeStyle = 'rgba(150,180,220,0.22)';
+      ctx.lineWidth = 2 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.roundRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y, 8*devicePixelRatio);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(180,220,255,0.25)';
+      ctx.setLineDash([6*devicePixelRatio, 8*devicePixelRatio]);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p2.y - 4*devicePixelRatio);
+      ctx.lineTo(p2.x, p2.y - 4*devicePixelRatio);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const boxLeft = conveyor.endX - conveyor.boxW;
+      const boxRight = conveyor.endX;
+      const boxTop = conveyor.y - conveyor.boxH;
+      const b1 = w2s(boxLeft, boxTop);
+      const b2 = w2s(boxRight, conveyor.y);
+      ctx.fillStyle = 'rgba(80,120,160,0.22)';
+      ctx.strokeStyle = 'rgba(150,200,255,0.24)';
+      ctx.beginPath();
+      ctx.roundRect(b1.x, b1.y, b2.x - b1.x, b2.y - b1.y, 8*devicePixelRatio);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(210,230,255,0.55)';
+      ctx.font = `${11*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Scrap', (b1.x + b2.x)/2, b1.y + (b2.y - b1.y)/2);
+    }
 
     // Truck
     {
@@ -649,7 +749,6 @@
 
     // Crates
     for (const c of crates) {
-      if (c.delivered) continue;
       if (c.picked) continue;
       const p = w2s(c.x, c.y);
       const r = c.r * view.pxPerM;
@@ -673,8 +772,9 @@
       const zoneLeft = truck.zoneX - truck.zoneW/2;
       const zoneRight = truck.zoneX + truck.zoneW/2;
       const topY = truck.bedTopY - 0.25;
-      for (let i=0; i<score; i++) {
-        const x = lerp(zoneLeft+0.4, zoneRight-0.4, (i+0.5)/Math.max(1, crates0.length));
+      const markers = Math.min(10, deliveredCount);
+      for (let i=0; i<markers; i++) {
+        const x = lerp(zoneLeft+0.4, zoneRight-0.4, (i+0.5)/Math.max(1, markers));
         const p = w2s(x, topY);
         ctx.fillStyle = 'rgba(140,255,190,0.55)';
         ctx.beginPath();
@@ -717,12 +817,15 @@
   const hud = document.getElementById('hud');
 
   const kgToLb = (kg) => kg * 2.2046226218;
+  const moneyFmt = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  });
 
   function updateHUD() {
     const dist = Math.hypot(load.x - hookPos().x, load.y - hookPos().y);
     const taut = (!crane.cableBroken) && dist > crane.cable * 0.995;
-
-    const remaining = crates.filter(c => !c.delivered).length;
 
     const r = radiusM();
     const tipKg = tipCapacityKgAtRadius(r);
@@ -742,8 +845,9 @@
 
     hud.innerHTML = `
       <div class="row" style="margin-bottom:6px">
-        <span class="pill"><b>Score</b> ${score}/${crates0.length}</span>
-        <span class="pill"><b>Remaining</b> ${remaining}</span>
+        <span class="pill"><b>Delivered</b> ${deliveredCount}</span>
+        <span class="pill"><b>Active loads</b> ${crates.length}</span>
+        <span class="pill"><b>Money</b> ${moneyFmt.format(money)}</span>
         <span class="pill"><b>Total load</b> ${Math.round(load.massKg)}kg</span>
         <span class="pill"><b>Cable</b> ${crane.cableBroken ? '<span class="warn">broken</span>' : (taut ? '<span class="ok">taut</span>' : 'slack')}</span>
       </div>
