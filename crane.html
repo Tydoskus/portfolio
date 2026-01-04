@@ -288,43 +288,6 @@
     return Math.max(0, Math.min(a, b, c));
   }
 
-  function drawEdgeArrow(targetX, targetY, label, color) {
-    const margin = 36 * devicePixelRatio;
-    const sp = w2s(targetX, targetY);
-    const clampedX = clamp(sp.x, margin, canvas.width - margin);
-    const clampedY = clamp(sp.y, margin, canvas.height - margin);
-    const offscreen = (sp.x !== clampedX) || (sp.y !== clampedY);
-
-    if (!offscreen) return;
-
-    const angle = Math.atan2(sp.y - clampedY, sp.x - clampedX);
-    const arrowLen = 18 * devicePixelRatio;
-    const tipX = clampedX + Math.cos(angle) * arrowLen;
-    const tipY = clampedY + Math.sin(angle) * arrowLen;
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 2 * devicePixelRatio;
-    ctx.beginPath();
-    ctx.moveTo(clampedX, clampedY);
-    ctx.lineTo(tipX, tipY);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(tipX, tipY);
-    ctx.lineTo(tipX - Math.cos(angle - 0.6) * 8 * devicePixelRatio, tipY - Math.sin(angle - 0.6) * 8 * devicePixelRatio);
-    ctx.lineTo(tipX - Math.cos(angle + 0.6) * 8 * devicePixelRatio, tipY - Math.sin(angle + 0.6) * 8 * devicePixelRatio);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.font = `600 ${12 * devicePixelRatio}px system-ui`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, clampedX, clampedY - 14 * devicePixelRatio);
-    ctx.restore();
-  }
-
   function bestRatedKg() {
     const minRadius = 0.35;
     return Math.max(0, Math.min(
@@ -536,8 +499,8 @@
       c.vy *= (1 - drag * dt);
       c.vy += G * dt;
 
-      const onBelt = c.x <= conveyor.startX + 0.2
-        && c.x >= conveyor.endX - conveyor.boxW * 0.05
+      const onBelt = c.x <= conveyor.startX + 0.1
+        && c.x >= conveyor.endX - 0.1
         && c.y >= groundY - c.r - 0.08;
       if (onBelt) {
         c.vx = conveyor.speed;
@@ -577,20 +540,22 @@
       if (vmag < 0.25 && Math.abs(c.y - (truck.bedTopY - c.r)) < 0.05) c.sleep += dt;
       else c.sleep = 0;
 
-      if (inZone && c.y >= truck.bedTopY - c.r - 0.02) {
-        c.y = truck.bedTopY - c.r;
+      const zoneLeft = truck.zoneX - truck.zoneW/2;
+      const zoneRight = truck.zoneX + truck.zoneW/2;
+      if (c.x > zoneLeft && c.x < zoneRight && c.y >= groundY - c.r - 0.02) {
+        c.y = groundY - c.r;
         c.vy = 0;
         c.vx *= 0.7;
       }
 
-      if (c.sleep > 0.8 && inZone) {
+      if (c.sleep > 0.8 && c.x > zoneLeft && c.x < zoneRight) {
         deliveredCount += 1;
         money += c.massKg * 0.01;
         crates.splice(idx, 1);
         continue;
       }
 
-      if (!c.picked && c.x <= conveyor.endX) {
+      if (!c.picked && c.x < conveyor.endX - conveyor.boxW * 0.65) {
         crates.splice(idx, 1);
       }
     }
@@ -689,12 +654,6 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('Scrap', (b1.x + b2.x)/2, b1.y + (b2.y - b1.y)/2);
-
-      ctx.fillStyle = 'rgba(200,220,255,0.85)';
-      ctx.font = `${12*devicePixelRatio}px system-ui`;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('Conveyor', p1.x + 6*devicePixelRatio, p1.y - 6*devicePixelRatio);
     }
 
     // Truck
