@@ -1,4 +1,1 @@
----
-title: Boom crane
----
-
+<a href="{{ '/crane/' | relative_url }}">Play Boom Crane Game</a>
