@@ -1,0 +1,828 @@
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Boom Crane Physics</title>
+  <style>
+    html, body { margin:0; height:100%; background:#0b0f14; overflow:hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    canvas { display:block; width:100vw; height:100vh; }
+    .hud {
+      position: fixed; left: 12px; top: 12px; z-index: 10;
+      color: #d7e2ff; font-size: 13px; line-height: 1.35;
+      background: rgba(10, 14, 20, 0.55); border: 1px solid rgba(180,200,255,0.12);
+      border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px);
+      max-width: min(620px, calc(100vw - 24px));
+      user-select: none;
+    }
+    .hud b { color:#ffffff; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
+    .pill {
+      padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(180,200,255,0.12);
+      background: rgba(255,255,255,0.04);
+    }
+    .warn { color:#ffd0d0; }
+    .ok { color:#c9ffdf; }
+    .muted { opacity:.86; }
+    .tip {
+      position: fixed; left: 12px; bottom: 12px; z-index: 10;
+      color: #cfe0ff; font-size: 12px;
+      background: rgba(10, 14, 20, 0.45); border: 1px solid rgba(180,200,255,0.10);
+      border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px);
+      user-select: none;
+      max-width: min(820px, calc(100vw - 24px));
+    }
+    .btn {
+      position: fixed; right: 12px; top: 12px; z-index: 10;
+      color: #e9f0ff; font-size: 12px; cursor:pointer;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(180,200,255,0.16);
+      border-radius: 999px; padding: 8px 10px;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud" id="hud"></div>
+  <div class="btn" id="restart">Restart</div>
+  <div class="tip">
+    <b>Controls</b> —
+    <span class="pill">A / D</span> boom rotate,
+    <span class="pill">W / S</span> extend/retract,
+    <span class="pill">I / K</span> winch up/down,
+    <span class="pill">← / →</span> move crane,
+    <span class="pill">Space</span> grab/release,
+    <span class="pill">R</span> damp swing (small),
+    <span class="pill">P</span> pause
+    <div style="opacity:.85;margin-top:6px">
+      New: HUD shows a live “load chart” (rated capacity at current radius + boom length) plus cable tension vs cable WLL.
+    </div>
+  </div>
+
+  <canvas id="c"></canvas>
+
+<script>
+(() => {
+  // =========================
+  // Boom Crane Physics Game (with "load chart" numbers)
+  // =========================
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  function resize() {
+    canvas.width = Math.floor(window.innerWidth * devicePixelRatio);
+    canvas.height = Math.floor(window.innerHeight * devicePixelRatio);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+
+  // World-to-screen transform
+  const view = {
+    pxPerM: 64 * devicePixelRatio,
+    camX: 0,
+    camY: 0,
+  };
+  function w2s(x, y) {
+    return {
+      x: (x - view.camX) * view.pxPerM + canvas.width * 0.5,
+      y: (y - view.camY) * view.pxPerM + canvas.height * 0.55,
+    };
+  }
+
+  // ---------- Input ----------
+  const keys = new Set();
+  window.addEventListener('keydown', (e) => {
+    if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
+    keys.add(e.key.toLowerCase());
+    if (e.key.toLowerCase() === 'p') paused = !paused;
+  });
+  window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+
+  // ---------- Game State ----------
+  const G = 9.81;
+  const groundY = 3.8;
+  const dtFixed = 1/120;
+  let paused = false;
+
+  // "Upgrade hooks" (future plans): these multipliers are where upgrades plug in.
+  // You can later add a shop UI that increases these levels.
+  const upgrades = {
+    boomStrengthLevel: 0,   // increases boom structural WLL
+    cableStrengthLevel: 0,  // increases cable WLL
+    counterweightLevel: 0,  // increases tipping capacity
+  };
+  const upgradeMult = (lvl, step) => 1 + lvl * step;
+
+  // Crane params (numbers are now in realistic-ish kg units for the chart)
+  const crane = {
+    x: -6.5,
+    y: groundY,
+    baseWidth: 4.0,        // m (support footprint width)
+    mastH: 3.1,
+    theta: -0.65,
+    thetaVel: 0,
+    L: 5.8,                // m
+    LVel: 0,
+    Lmin: 3.2,
+    Lmax: 11.5,
+    cable: 4.2,            // m
+    cableVel: 0,
+    cableMin: 0.9,
+    cableMax: 12.0,
+    slewRate: 1.25,        // rad/s
+    telescopeRate: 3.0,    // m/s
+    winchRate: 5.2,        // m/s
+    driveRate: 4.5,        // m/s
+
+    // Stability model:
+    // counterweightKg is an "effective" counterweight mass used for tipping moment resistance.
+    counterweightKg: 12000,   // kg (effective)
+    tipAccum: 0,
+    tipped: false,
+    cableBroken: false,
+
+    // Rope tuning
+    ropeStiff: 7600,
+    ropeDamp: 72,
+
+    // Safety factors (rated capacity is derated vs the physical tip point)
+    safetyTip: 1.25,       // typical chart derating vs theoretical tip
+    safetyBoom: 1.15,      // structure factor
+    safetyCable: 1.20,     // WLL factor
+
+    // Base WLLs (before length-derating / upgrades)
+    boomBaseWLLKgAtLmin: 9000,  // kg at Lmin, then derates with length
+    cableWLLKg: 10000,          // kg WLL (working load limit)
+  };
+
+  // Hook + load point mass
+  const load = {
+    x: crane.x + 4,
+    y: crane.y - crane.mastH + 5,
+    vx: 0,
+    vy: 0,
+    r: 0.25,
+    hookMassKg: 150,      // hook block + rigging
+    massKg: 150,          // total mass (hook + carried)
+    carryingId: null,
+    tensionN: 0,
+  };
+
+  // Crates (now heavier)
+  function makeCrate(id, x, y, massKg) {
+    return {
+      id, x, y, vx: 0, vy: 0,
+      r: 0.42,
+      massKg,
+      picked: false,
+      delivered: false,
+      sleep: 0,
+    };
+  }
+  const crates0 = [
+    makeCrate("A", 2.5, groundY - 0.42, 800),
+    makeCrate("B", 4.4, groundY - 0.42, 1400),
+    makeCrate("C", 6.6, groundY - 0.42, 2200),
+    makeCrate("D", 8.7, groundY - 0.42, 3200),
+  ];
+  let crates = [];
+
+  // Target truck bed zone
+  const truck = {
+    x: 14.5,
+    y: groundY,
+    bedW: 4.6,
+    bedH: 0.55,
+    bedTopY: groundY - 0.55,
+    zoneX: 14.5,
+    zoneW: 3.8,
+  };
+
+  let score = 0;
+  let time = 0;
+
+  function reset() {
+    crane.x = -6.5;
+    crane.theta = -0.65;
+    crane.thetaVel = 0;
+    crane.L = 5.8;
+    crane.LVel = 0;
+    crane.cable = 4.2;
+    crane.cableVel = 0;
+    crane.tipAccum = 0;
+    crane.tipped = false;
+    crane.cableBroken = false;
+
+    load.x = crane.x + 4;
+    load.y = crane.y - crane.mastH + 5;
+    load.vx = 0; load.vy = 0;
+    load.carryingId = null;
+    load.massKg = load.hookMassKg;
+    load.tensionN = 0;
+
+    crates = crates0.map(c => ({...c}));
+    score = 0;
+    time = 0;
+  }
+  reset();
+  document.getElementById('restart').addEventListener('click', reset);
+
+  // ---------- Geometry ----------
+  function boomPivot() { return { x: crane.x, y: crane.y - crane.mastH }; }
+  function boomTip() {
+    const p = boomPivot();
+    return { x: p.x + Math.cos(crane.theta) * crane.L, y: p.y + Math.sin(crane.theta) * crane.L };
+  }
+  function hookPos() {
+    const t = boomTip();
+    return { x: t.x, y: t.y + 0.25 };
+  }
+
+  // ---------- Rated capacities (the "load chart") ----------
+  function radiusM() {
+    // horizontal radius from crane centerline to hook
+    return Math.max(0.35, Math.abs(hookPos().x - crane.x));
+  }
+  function tipCapacityKgAtRadius(r) {
+    // Tip-limited capacity (derated)
+    const cw = crane.counterweightKg * upgradeMult(upgrades.counterweightLevel, 0.18);
+    const resistingNm = (cw * G) * (crane.baseWidth * 0.5);
+    const theoreticalKg = resistingNm / (G * r);
+    return theoreticalKg / crane.safetyTip;
+  }
+  function boomCapacityKgAtLength(L) {
+    // Structural capacity that derates with boom length.
+    // exponent controls how harsh the derating is.
+    const expo = 1.40;
+    const mult = upgradeMult(upgrades.boomStrengthLevel, 0.22);
+    const base = crane.boomBaseWLLKgAtLmin * mult;
+    const raw = base * Math.pow(crane.Lmin / Math.max(crane.Lmin, L), expo);
+    return raw / crane.safetyBoom;
+  }
+  function cableCapacityKg() {
+    const mult = upgradeMult(upgrades.cableStrengthLevel, 0.25);
+    return (crane.cableWLLKg * mult) / crane.safetyCable;
+  }
+  function overallRatedKg() {
+    const r = radiusM();
+    const a = tipCapacityKgAtRadius(r);
+    const b = boomCapacityKgAtLength(crane.L);
+    const c = cableCapacityKg();
+    return Math.max(0, Math.min(a, b, c));
+  }
+
+  // ---------- Grabbing ----------
+  function tryGrabOrRelease() {
+    if (crane.tipped) return;
+
+    if (load.carryingId) {
+      const id = load.carryingId;
+      const c = crates.find(k => k.id === id);
+      if (c && !c.delivered) {
+        c.picked = false;
+        c.x = load.x; c.y = load.y;
+        c.vx = load.vx; c.vy = load.vy;
+        c.sleep = 0;
+      }
+      load.carryingId = null;
+      load.massKg = load.hookMassKg;
+      return;
+    }
+
+    let best = null, bestD = 1e9;
+    for (const c of crates) {
+      if (c.delivered || c.picked) continue;
+      const d = Math.hypot(c.x - load.x, c.y - load.y);
+      if (d < 0.85 && d < bestD) { bestD = d; best = c; }
+    }
+    if (best) {
+      best.picked = true;
+      load.carryingId = best.id;
+      load.massKg = load.hookMassKg + best.massKg;
+      load.vx *= 0.85;
+      load.vy *= 0.85;
+    }
+  }
+  let spaceLatch = false;
+
+  // ---------- Physics ----------
+  function step(dt) {
+    time += dt;
+
+    view.camX = lerp(view.camX, crane.x + 5.0, 0.06);
+    view.camY = lerp(view.camY, groundY - 1.8, 0.06);
+
+    const left = keys.has('arrowleft');
+    const right = keys.has('arrowright');
+    const a = keys.has('a');
+    const d = keys.has('d');
+    const w = keys.has('w');
+    const s = keys.has('s');
+    const i = keys.has('i');
+    const k = keys.has('k');
+    const r = keys.has('r');
+
+    if (keys.has(' ')) {
+      if (!spaceLatch) tryGrabOrRelease();
+      spaceLatch = true;
+    } else spaceLatch = false;
+
+    if (r) { load.vx *= 0.985; load.vy *= 0.985; }
+
+    if (!crane.tipped) {
+      // Drive base
+      let drive = 0;
+      if (left) drive -= 1;
+      if (right) drive += 1;
+      crane.x += drive * crane.driveRate * dt;
+
+      // Rotate boom (slew)
+      let rot = 0;
+      if (a) rot -= 1;
+      if (d) rot += 1;
+      const util = clamp(load.massKg / Math.max(1, overallRatedKg()), 0, 2.5);
+      const slewScale = clamp(1.0 - 0.55 * util, 0.25, 1.0);
+      const targetThetaVel = rot * crane.slewRate * slewScale;
+      crane.thetaVel = lerp(crane.thetaVel, targetThetaVel, 0.22);
+      crane.theta += crane.thetaVel * dt;
+
+      // Telescope
+      let tel = 0;
+      if (w) tel -= 1;
+      if (s) tel += 1;
+      const targetLVel = (-tel) * crane.telescopeRate;
+      crane.LVel = lerp(crane.LVel, targetLVel, 0.18);
+      crane.L = clamp(crane.L + crane.LVel * dt, crane.Lmin, crane.Lmax);
+
+      // Winch
+      if (!crane.cableBroken) {
+        let win = 0;
+        if (i) win -= 1;
+        if (k) win += 1;
+        const targetCV = win * crane.winchRate;
+        crane.cableVel = lerp(crane.cableVel, targetCV, 0.18);
+        crane.cable = clamp(crane.cable + crane.cableVel * dt, crane.cableMin, crane.cableMax);
+      } else {
+        crane.cableVel = 0;
+      }
+    }
+
+    const h = hookPos();
+
+    // Load dynamics
+    const air = 0.12;
+    load.vx *= (1 - air * dt);
+    load.vy *= (1 - air * dt);
+    load.vy += G * dt;
+    load.tensionN = 0;
+
+    // Cable constraint
+    const dx = load.x - h.x;
+    const dy = load.y - h.y;
+    const dist = Math.hypot(dx, dy);
+    const Lc = crane.cable;
+
+    if (!crane.cableBroken && dist > 1e-6) {
+      if (dist > Lc) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const stretch = dist - Lc;
+
+        const relVel = load.vx * nx + load.vy * ny;
+        const kSpring = crane.ropeStiff;
+        const cDamp = crane.ropeDamp;
+
+        // Tension estimate used for cable WLL display & snapping
+        const tensionN = Math.max(0, (kSpring * stretch) + (cDamp * relVel));
+        load.tensionN = tensionN;
+
+        const mass = Math.max(40, load.massKg); // avoid absurd accel when light
+        const aRope = (-tensionN) / mass;
+
+        load.vx += (aRope * nx) * dt;
+        load.vy += (aRope * ny) * dt;
+
+        const corr = stretch * 0.55;
+        load.x -= nx * corr;
+        load.y -= ny * corr;
+
+        const snatch = clamp(-crane.cableVel, 0, 6.0) * 0.010;
+        load.vx += (-nx) * snatch;
+        load.vy += (-ny) * snatch;
+
+        // Cable snap check (if tension exceeds rated cable capacity)
+        const cableRatedKg = cableCapacityKg();
+        const tensionKgEq = load.tensionN / G;
+        if (tensionKgEq > cableRatedKg * 1.06) {
+          crane.cableBroken = true;
+          load.tensionN = 0;
+          // drop carried object (if any)
+          if (load.carryingId) tryGrabOrRelease();
+        }
+      }
+    }
+
+    // Integrate
+    load.x += load.vx * dt;
+    load.y += load.vy * dt;
+
+    // Collisions
+    function collideCircleWithFloor(obj) {
+      const floorY = groundY - obj.r;
+      if (obj.y > floorY) {
+        obj.y = floorY;
+        if (obj.vy > 0) obj.vy *= -0.28;
+        obj.vx *= 0.86;
+      }
+    }
+    collideCircleWithFloor(load);
+
+    // Crates
+    for (const c of crates) {
+      if (c.delivered) continue;
+
+      if (c.picked && load.carryingId === c.id) {
+        c.x = load.x;
+        c.y = load.y;
+        c.vx = load.vx;
+        c.vy = load.vy;
+        continue;
+      }
+
+      const drag = 0.08;
+      c.vx *= (1 - drag * dt);
+      c.vy *= (1 - drag * dt);
+      c.vy += G * dt;
+
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+
+      // truck bed
+      const bedLeft = truck.x - truck.bedW/2;
+      const bedRight = truck.x + truck.bedW/2;
+
+      collideCircleWithFloor(c);
+
+      if (c.x > bedLeft - 0.2 && c.x < bedRight + 0.2) {
+        const topY = (truck.bedTopY) - c.r;
+        if (c.y > topY && c.y < groundY && c.vy > 0) {
+          c.y = topY;
+          c.vy *= -0.22;
+          c.vx *= 0.78;
+        }
+      }
+
+      const vmag = Math.hypot(c.vx, c.vy);
+      if (vmag < 0.25 && Math.abs(c.y - (truck.bedTopY - c.r)) < 0.05) c.sleep += dt;
+      else c.sleep = 0;
+
+      const zoneLeft = truck.zoneX - truck.zoneW/2;
+      const zoneRight = truck.zoneX + truck.zoneW/2;
+      if (c.sleep > 0.8 && c.x > zoneLeft && c.x < zoneRight) {
+        c.delivered = true;
+        score += 1;
+      }
+    }
+
+    // Tipping model (uses actual load mass kg)
+    const hx = hookPos().x;
+    const reach = (hx - crane.x);
+    const loadW = load.massKg * G;
+
+    const cw = crane.counterweightKg * upgradeMult(upgrades.counterweightLevel, 0.18);
+    const resisting = cw * G * (crane.baseWidth * 0.5);
+
+    // Dynamic side load approximation (scaled down for kg realism)
+    const dynamic = Math.abs(crane.thetaVel) * load.massKg * 0.95;
+
+    const moment = Math.abs(loadW * reach) + dynamic;
+    const tipRatio = moment / Math.max(1e-6, resisting);
+    crane.tipRatio = tipRatio;
+
+    if (!crane.tipped) {
+      const over = tipRatio - 1.0;
+      if (over > 0) crane.tipAccum += over * dt;
+      else crane.tipAccum = Math.max(0, crane.tipAccum - 0.65 * dt);
+
+      if (crane.tipAccum > 0.9) {
+        crane.tipped = true;
+        if (load.carryingId) tryGrabOrRelease();
+        load.vx += (Math.random() - 0.5) * 2.4;
+        load.vy += -2.2;
+      }
+    } else {
+      crane.thetaVel *= 0.98;
+      crane.LVel *= 0.98;
+    }
+  }
+
+  // ---------- Rendering ----------
+  function draw() {
+    ctx.fillStyle = '#0b0f14';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const yG = w2s(0, groundY).y;
+
+    const grad = ctx.createLinearGradient(0, yG - 200*devicePixelRatio, 0, yG + 220*devicePixelRatio);
+    grad.addColorStop(0, '#0b0f14');
+    grad.addColorStop(0.6, '#0b0f14');
+    grad.addColorStop(1, '#0d151f');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = 'rgba(180,220,255,0.12)';
+    ctx.lineWidth = 2 * devicePixelRatio;
+    ctx.beginPath();
+    ctx.moveTo(0, yG);
+    ctx.lineTo(canvas.width, yG);
+    ctx.stroke();
+
+    // Truck
+    {
+      const bedLeft = truck.x - truck.bedW/2;
+      const bedRight = truck.x + truck.bedW/2;
+      const p1 = w2s(bedLeft, truck.bedTopY);
+      const p2 = w2s(bedRight, truck.y);
+
+      ctx.fillStyle = 'rgba(210,230,255,0.10)';
+      ctx.strokeStyle = 'rgba(210,230,255,0.20)';
+      ctx.lineWidth = 2 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.roundRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y, 12*devicePixelRatio);
+      ctx.fill();
+      ctx.stroke();
+
+      const zl = truck.zoneX - truck.zoneW/2;
+      const zr = truck.zoneX + truck.zoneW/2;
+      const z1 = w2s(zl, truck.bedTopY);
+      const z2 = w2s(zr, truck.y);
+      ctx.strokeStyle = 'rgba(140,255,190,0.35)';
+      ctx.setLineDash([10*devicePixelRatio, 8*devicePixelRatio]);
+      ctx.beginPath();
+      ctx.roundRect(z1.x, z1.y + 3*devicePixelRatio, z2.x - z1.x, z2.y - z1.y - 3*devicePixelRatio, 10*devicePixelRatio);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Crane
+    const pivot = boomPivot();
+    const tip = boomTip();
+    const hook = hookPos();
+
+    const sp = w2s(pivot.x, pivot.y);
+    const st = w2s(tip.x, tip.y);
+
+    // Mast
+    {
+      const mastBase = w2s(crane.x, crane.y);
+      const mastTop = w2s(crane.x, crane.y - crane.mastH);
+      ctx.strokeStyle = 'rgba(200,220,255,0.22)';
+      ctx.lineWidth = 10 * devicePixelRatio;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(mastBase.x, mastBase.y);
+      ctx.lineTo(mastTop.x, mastTop.y);
+      ctx.stroke();
+    }
+
+    // Base
+    {
+      const bw = crane.baseWidth;
+      const left = w2s(crane.x - bw/2, crane.y);
+      const right = w2s(crane.x + bw/2, crane.y);
+      ctx.strokeStyle = 'rgba(200,220,255,0.20)';
+      ctx.lineWidth = 16 * devicePixelRatio;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(left.x, left.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.stroke();
+    }
+
+    // Boom
+    {
+      const boomColor = crane.tipped ? 'rgba(255,170,170,0.35)' : 'rgba(220,235,255,0.30)';
+      ctx.strokeStyle = boomColor;
+      ctx.lineWidth = 7 * devicePixelRatio;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sp.x, sp.y);
+      ctx.lineTo(st.x, st.y);
+      ctx.stroke();
+    }
+
+    // Cable
+    {
+      const hp = w2s(hook.x, hook.y);
+      const lp = w2s(load.x, load.y);
+      const dist = Math.hypot(load.x - hook.x, load.y - hook.y);
+      const taut = (!crane.cableBroken) && dist > crane.cable * 0.995;
+
+      ctx.strokeStyle = crane.cableBroken ? 'rgba(255,120,120,0.55)'
+        : (taut ? 'rgba(255,255,255,0.38)' : 'rgba(255,255,255,0.16)');
+      ctx.lineWidth = (taut ? 2.3 : 1.6) * devicePixelRatio;
+      ctx.beginPath();
+      ctx.moveTo(hp.x, hp.y);
+      ctx.lineTo(lp.x, lp.y);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.arc(hp.x, hp.y, 3.2*devicePixelRatio, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // Load
+    {
+      const lp = w2s(load.x, load.y);
+      ctx.fillStyle = load.carryingId ? 'rgba(255,230,180,0.85)' : 'rgba(210,220,255,0.75)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 2 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.arc(lp.x, lp.y, load.r * view.pxPerM, 0, Math.PI*2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Crates
+    for (const c of crates) {
+      if (c.delivered) continue;
+      if (c.picked) continue;
+      const p = w2s(c.x, c.y);
+      const r = c.r * view.pxPerM;
+      ctx.fillStyle = 'rgba(255,240,210,0.18)';
+      ctx.strokeStyle = 'rgba(255,240,210,0.30)';
+      ctx.lineWidth = 2 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.roundRect(p.x - r, p.y - r, 2*r, 2*r, 10*devicePixelRatio);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(240,248,255,0.75)';
+      ctx.font = `${12*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${c.id} (${Math.round(c.massKg)}kg)`, p.x, p.y);
+    }
+
+    // Delivered markers
+    {
+      const zoneLeft = truck.zoneX - truck.zoneW/2;
+      const zoneRight = truck.zoneX + truck.zoneW/2;
+      const topY = truck.bedTopY - 0.25;
+      for (let i=0; i<score; i++) {
+        const x = lerp(zoneLeft+0.4, zoneRight-0.4, (i+0.5)/Math.max(1, crates0.length));
+        const p = w2s(x, topY);
+        ctx.fillStyle = 'rgba(140,255,190,0.55)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5*devicePixelRatio, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    if (crane.tipRatio > 0.85 && !crane.tipped) {
+      const a = clamp((crane.tipRatio - 0.85) / 0.35, 0, 1);
+      ctx.fillStyle = `rgba(255,120,120,${0.10*a})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (crane.tipped) {
+      ctx.fillStyle = 'rgba(255,190,190,0.12)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(255,220,220,0.92)';
+      ctx.font = `700 ${28*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('TIPPED', canvas.width*0.5, canvas.height*0.18);
+      ctx.font = `500 ${14*devicePixelRatio}px system-ui`;
+      ctx.fillStyle = 'rgba(240,245,255,0.85)';
+      ctx.fillText('Restart and keep the load closer / winch up before slewing.', canvas.width*0.5, canvas.height*0.18 + 26*devicePixelRatio);
+    }
+
+    if (crane.cableBroken && !crane.tipped) {
+      ctx.fillStyle = 'rgba(255,120,120,0.10)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(255,220,220,0.92)';
+      ctx.font = `700 ${22*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('CABLE SNAPPED', canvas.width*0.5, canvas.height*0.15);
+    }
+  }
+
+  // ---------- HUD ----------
+  const hud = document.getElementById('hud');
+
+  const kgToLb = (kg) => kg * 2.2046226218;
+
+  function updateHUD() {
+    const dist = Math.hypot(load.x - hookPos().x, load.y - hookPos().y);
+    const taut = (!crane.cableBroken) && dist > crane.cable * 0.995;
+
+    const remaining = crates.filter(c => !c.delivered).length;
+
+    const r = radiusM();
+    const tipKg = tipCapacityKgAtRadius(r);
+    const boomKg = boomCapacityKgAtLength(crane.L);
+    const cableKg = cableCapacityKg();
+    const ratedKg = Math.max(0, Math.min(tipKg, boomKg, cableKg));
+
+    const util = ratedKg > 0 ? (load.massKg / ratedKg) : 9;
+    const utilPct = Math.round(util * 100);
+    const utilClass = util > 1.0 ? 'warn' : (util > 0.85 ? 'warn' : 'ok');
+
+    const tensionKg = load.tensionN / G;
+    const tensionPct = cableKg > 0 ? Math.round((tensionKg / cableKg) * 100) : 0;
+    const tensionClass = tensionPct > 100 ? 'warn' : (tensionPct > 85 ? 'warn' : 'ok');
+
+    const carry = load.carryingId ? `Carrying <b>${load.carryingId}</b>` : 'Hook only';
+
+    hud.innerHTML = `
+      <div class="row" style="margin-bottom:6px">
+        <span class="pill"><b>Score</b> ${score}/${crates0.length}</span>
+        <span class="pill"><b>Remaining</b> ${remaining}</span>
+        <span class="pill"><b>Total load</b> ${Math.round(load.massKg)}kg</span>
+        <span class="pill"><b>Cable</b> ${crane.cableBroken ? '<span class="warn">broken</span>' : (taut ? '<span class="ok">taut</span>' : 'slack')}</span>
+      </div>
+
+      <div class="row">
+        <span class="pill"><b>Radius</b> ${r.toFixed(1)}m</span>
+        <span class="pill"><b>Boom</b> ${crane.L.toFixed(1)}m</span>
+        <span class="pill"><b>Angle</b> ${(crane.theta * 57.2958).toFixed(0)}°</span>
+        <span class="pill"><b>Winch</b> ${crane.cable.toFixed(1)}m</span>
+      </div>
+
+      <div style="margin-top:8px">
+        <b>Rated capacity (this setup)</b>:
+        <span class="${utilClass}"><b>${Math.round(ratedKg)}kg</b></span>
+        <span class="muted">(${Math.round(kgToLb(ratedKg))}lb)</span>
+        <span class="pill" style="margin-left:6px"><b>Util</b> <span class="${utilClass}">${utilPct}%</span></span>
+      </div>
+
+      <div class="muted" style="margin-top:6px">
+        Limits — Tip: ${Math.round(tipKg)}kg • Boom: ${Math.round(boomKg)}kg • Cable: ${Math.round(cableKg)}kg
+      </div>
+
+      <div class="muted" style="margin-top:6px">
+        Cable tension: <span class="${tensionClass}"><b>${Math.round(tensionKg)}kg</b></span>
+        <span class="muted">(${Math.round(kgToLb(tensionKg))}lb)</span>
+        <span class="pill" style="margin-left:6px"><b>WLL</b> <span class="${tensionClass}">${tensionPct}%</span></span>
+      </div>
+
+      <div style="margin-top:8px; opacity:.92">
+        ${carry}
+        ${crane.tipped ? ` — <span class="warn"><b>Crane is down.</b></span>` : ''}
+        ${crane.cableBroken && !crane.tipped ? ` — <span class="warn"><b>Winch disabled.</b></span>` : ''}
+      </div>
+
+      <div class="muted" style="margin-top:6px">
+        Upgrade hooks (future): boom lvl ${upgrades.boomStrengthLevel}, cable lvl ${upgrades.cableStrengthLevel}, counterweight lvl ${upgrades.counterweightLevel}.
+      </div>
+    `;
+  }
+
+  // ---------- Main Loop ----------
+  let acc = 0;
+  let last = performance.now();
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    if (!paused) {
+      acc += dt;
+      while (acc >= dtFixed) {
+        step(dtFixed);
+        acc -= dtFixed;
+      }
+    }
+
+    updateHUD();
+    draw();
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- roundRect compat ----------
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      r = Math.min(r, w/2, h/2);
+      this.beginPath();
+      this.moveTo(x+r, y);
+      this.arcTo(x+w, y, x+w, y+h, r);
+      this.arcTo(x+w, y+h, x, y+h, r);
+      this.arcTo(x, y+h, x, y, r);
+      this.arcTo(x, y, x+w, y, r);
+      this.closePath();
+      return this;
+    };
+  }
+})();
+</script>
+</body>
+</html>
+```
