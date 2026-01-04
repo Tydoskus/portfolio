@@ -517,12 +517,22 @@
 
       collideCircleWithFloor(c);
 
+      const zoneLeft = truck.zoneX - truck.zoneW/2;
+      const zoneRight = truck.zoneX + truck.zoneW/2;
+      const inZone = c.x > zoneLeft && c.x < zoneRight;
+
       if (c.x > bedLeft - 0.2 && c.x < bedRight + 0.2) {
         const topY = (truck.bedTopY) - c.r;
         if (c.y > topY && c.y < groundY && c.vy > 0) {
           c.y = topY;
-          c.vy *= -0.22;
-          c.vx *= 0.78;
+          if (inZone) {
+            c.vy = 0;
+            c.vx *= 0.6;
+            c.sleep += dt * 1.5;
+          } else {
+            c.vy *= -0.22;
+            c.vx *= 0.78;
+          }
         }
       }
 
