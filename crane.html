@@ -112,6 +112,45 @@ permalink: /crane.html
       border-radius: 999px; padding: 8px 10px;
       user-select: none;
     }
+    .meter {
+      position: relative;
+      height: 10px;
+      background: rgba(30,50,70,0.12);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .meter > span {
+      position: absolute;
+      inset: 0;
+      transform-origin: left;
+      border-radius: 999px;
+    }
+    .contract {
+      border: 1px dashed rgba(40,80,120,0.35);
+      border-radius: 12px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.6);
+    }
+    .contract-title {
+      font-weight: 700;
+      font-size: 12px;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .contract-progress {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    .tag {
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(30,50,70,0.08);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
   </style>
 </head>
 <body>
@@ -128,6 +167,7 @@ permalink: /crane.html
     <span class="pill">P</span> pause
     <div style="opacity:.85;margin-top:6px">
       Drop loads in the green zone to earn cash, then buy upgrades. Smooth landings earn precision bonuses. Priority loads (★) pay more.
+      Complete shift contracts to unlock flow state for control boosts and extra pay.
     </div>
   </div>
 
@@ -308,6 +348,23 @@ permalink: /crane.html
   let shiftDelivered = 0;
   let shiftFlash = 0;
   let shiftBonus = 0;
+  let reputation = 50;
+  let repTier = 2;
+  let focus = 0;
+  let flowTimer = 0;
+  let flowFlash = 0;
+  let flowActive = false;
+  let overloadEvents = 0;
+  let safetyBreaks = 0;
+  let shiftQualityTotal = 0;
+  let shiftQualityCount = 0;
+  let shiftPriorityDelivered = 0;
+  let shiftHeavyDelivered = 0;
+  let shiftHeavyThreshold = 0;
+  let shiftContracts = [];
+  let overloadCooldown = 0;
+  let tipPenaltyApplied = false;
+  let cablePenaltyApplied = false;
 
   function reset() {
     crane.x = craneStart.x;
@@ -353,6 +410,13 @@ permalink: /crane.html
     shiftDelivered = 0;
     shiftFlash = 0;
     shiftBonus = 0;
+    reputation = 50;
+    focus = 0;
+    flowTimer = 0;
+    flowFlash = 0;
+    updateReputation(0);
+    refreshShiftMetrics();
+    selectShiftContracts();
   }
   reset();
   document.getElementById('restart').addEventListener('click', reset);
@@ -454,6 +518,106 @@ permalink: /crane.html
     return Math.round(base * Math.pow(1.55, level));
   }
 
+  function updateReputation(delta) {
+    reputation = clamp(reputation + delta, 0, 100);
+    repTier = clamp(1 + Math.floor(reputation / 25), 1, 5);
+  }
+
+  function repMultiplier() {
+    return 1 + (repTier - 1) * 0.045;
+  }
+
+  function shiftContractsDeck() {
+    return [
+      () => ({
+        id: 'precision',
+        title: 'Silk Drop',
+        tag: 'Precision',
+        bonus: 110,
+        progress: () => {
+          const avg = shiftQualityCount ? (shiftQualityTotal / shiftQualityCount) : 0;
+          const pct = Math.round(avg * 100);
+          return `Avg precision ${pct}% • ${shiftQualityCount}/3`;
+        },
+        ratio: () => {
+          const avg = shiftQualityCount ? (shiftQualityTotal / shiftQualityCount) : 0;
+          const qualityRatio = clamp(avg / 0.75, 0, 1);
+          const countRatio = clamp(shiftQualityCount / 3, 0, 1);
+          return Math.min(1, (qualityRatio + countRatio) * 0.5);
+        },
+        complete: () => {
+          const avg = shiftQualityCount ? (shiftQualityTotal / shiftQualityCount) : 0;
+          return shiftQualityCount >= 3 && avg >= 0.75;
+        },
+      }),
+      () => ({
+        id: 'priority',
+        title: 'Priority Rush',
+        tag: 'Priority',
+        bonus: 125,
+        progress: () => `Priority loads ${shiftPriorityDelivered}/2`,
+        ratio: () => clamp(shiftPriorityDelivered / 2, 0, 1),
+        complete: () => shiftPriorityDelivered >= 2,
+      }),
+      () => ({
+        id: 'heavy',
+        title: 'Heavy Confidence',
+        tag: 'Heavy',
+        bonus: 140,
+        progress: () => `Heavy loads ${shiftHeavyDelivered}/2 (≥ ${Math.round(shiftHeavyThreshold)}kg)`,
+        ratio: () => clamp(shiftHeavyDelivered / 2, 0, 1),
+        complete: () => shiftHeavyDelivered >= 2,
+      }),
+      () => ({
+        id: 'safety',
+        title: 'Zero Incident',
+        tag: 'Safety',
+        bonus: 120,
+        progress: () => `Incidents ${safetyBreaks + overloadEvents}`,
+        ratio: () => (safetyBreaks + overloadEvents === 0 ? 1 : 0),
+        complete: () => safetyBreaks === 0 && overloadEvents === 0,
+      }),
+    ];
+  }
+
+  function refreshShiftMetrics() {
+    shiftQualityTotal = 0;
+    shiftQualityCount = 0;
+    shiftPriorityDelivered = 0;
+    shiftHeavyDelivered = 0;
+    shiftHeavyThreshold = Math.max(150, bestRatedKg() * 0.75);
+    overloadEvents = 0;
+    safetyBreaks = 0;
+    overloadCooldown = 0;
+    tipPenaltyApplied = false;
+    cablePenaltyApplied = false;
+  }
+
+  function selectShiftContracts() {
+    const options = shiftContractsDeck();
+    for (let i = options.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [options[i], options[j]] = [options[j], options[i]];
+    }
+    shiftContracts = options.slice(0, 2).map(make => make());
+  }
+
+  function applyShiftContractRewards() {
+    let bonus = 0;
+    let completed = 0;
+    for (const contract of shiftContracts) {
+      if (contract.complete()) {
+        bonus += contract.bonus;
+        completed += 1;
+      }
+    }
+    if (completed > 0) {
+      const repGain = 2 + completed;
+      updateReputation(repGain);
+      money += bonus;
+    }
+  }
+
   // ---------- Grabbing ----------
   function tryGrabOrRelease() {
     if (crane.tipped) return;
@@ -492,10 +656,17 @@ permalink: /crane.html
   function step(dt) {
     time += dt;
     payoutFlash = Math.max(0, payoutFlash - dt);
+    flowFlash = Math.max(0, flowFlash - dt);
+
+    if (flowTimer > 0) {
+      flowTimer = Math.max(0, flowTimer - dt);
+    }
+    flowActive = flowTimer > 0;
+    overloadCooldown = Math.max(0, overloadCooldown - dt);
 
     windTimer -= dt;
     if (windTimer <= 0) {
-      const windRange = 2.2 + shiftLevel * 0.3;
+      const windRange = (2.2 + shiftLevel * 0.3) * (flowActive ? 0.6 : 1);
       windTarget = (Math.random() * 2 - 1) * windRange;
       windTimer = 4.5 + Math.random() * 6;
     }
@@ -530,12 +701,14 @@ permalink: /crane.html
 
     if (r) { load.vx *= 0.985; load.vy *= 0.985; }
 
+    const flowBoost = flowActive ? 1.12 : 1;
+
     if (!crane.tipped) {
       // Drive base
       let drive = 0;
       if (left) drive -= 1;
       if (right) drive += 1;
-      crane.x += drive * crane.driveRate * dt;
+      crane.x += drive * crane.driveRate * flowBoost * dt;
 
       // Rotate boom (slew)
       let rot = 0;
@@ -543,7 +716,7 @@ permalink: /crane.html
       if (d) rot += 1;
       const util = clamp(load.massKg / Math.max(1, overallRatedKg()), 0, 2.5);
       const slewScale = clamp(1.0 - 0.55 * util, 0.25, 1.0);
-      const targetThetaVel = rot * crane.slewRate * slewScale;
+      const targetThetaVel = rot * crane.slewRate * slewScale * flowBoost;
       crane.thetaVel = lerp(crane.thetaVel, targetThetaVel, 0.22);
       crane.theta += crane.thetaVel * dt;
 
@@ -551,7 +724,7 @@ permalink: /crane.html
       let tel = 0;
       if (w) tel -= 1;
       if (s) tel += 1;
-      const targetLVel = (-tel) * crane.telescopeRate;
+      const targetLVel = (-tel) * crane.telescopeRate * flowBoost;
       crane.LVel = lerp(crane.LVel, targetLVel, 0.18);
       crane.L = clamp(crane.L + crane.LVel * dt, crane.Lmin, crane.Lmax);
 
@@ -560,7 +733,7 @@ permalink: /crane.html
         let win = 0;
         if (i) win -= 1;
         if (k) win += 1;
-        const targetCV = win * crane.winchRate;
+        const targetCV = win * crane.winchRate * flowBoost;
         crane.cableVel = lerp(crane.cableVel, targetCV, 0.18);
         crane.cable = clamp(crane.cable + crane.cableVel * dt, crane.cableMin, crane.cableMax);
       } else {
@@ -575,7 +748,7 @@ permalink: /crane.html
     load.vx *= (1 - air * dt);
     load.vy *= (1 - air * dt);
     load.vy += G * dt;
-    load.vx += wind * dt;
+    load.vx += wind * dt * (flowActive ? 0.6 : 1);
     load.tensionN = 0;
 
     // Cable constraint
@@ -620,7 +793,27 @@ permalink: /crane.html
           load.tensionN = 0;
           // drop carried object (if any)
           if (load.carryingId) tryGrabOrRelease();
+          if (!cablePenaltyApplied) {
+            safetyBreaks += 1;
+            updateReputation(-4);
+            cablePenaltyApplied = true;
+          }
         }
+      }
+    }
+
+    const ratedKgNow = overallRatedKg();
+    const utilNow = ratedKgNow > 0 ? load.massKg / ratedKgNow : 2;
+    const cableRatedKgNow = cableCapacityKg();
+    const tensionKgNow = load.tensionN / G;
+    const tensionUtil = cableRatedKgNow > 0 ? tensionKgNow / cableRatedKgNow : 0;
+    const overloadWarning = utilNow > 0.95 || tensionUtil > 0.95;
+    if (overloadWarning) {
+      focus = Math.max(0, focus - dt * 12);
+      if (overloadCooldown <= 0) {
+        overloadEvents += 1;
+        updateReputation(-1);
+        overloadCooldown = 5;
       }
     }
 
@@ -722,13 +915,32 @@ permalink: /crane.html
         const quality = clamp((centerScore + speedScore) * 0.5, 0, 1);
         const precisionBonus = basePayout * quality * 0.28;
         const streakBonus = deliveryStreak >= 2 ? basePayout * 0.12 : 0;
-        const payout = basePayout * (1 + (isPriority ? priorityBonus : 0)) + precisionBonus + streakBonus;
+        const payoutRaw = basePayout * (1 + (isPriority ? priorityBonus : 0)) + precisionBonus + streakBonus;
+        const payout = payoutRaw * repMultiplier() * (flowActive ? 1.15 : 1);
         money += payout;
         lastPayout = payout;
         payoutFlash = 2.2;
         lastPayoutWasPriority = isPriority;
         lastDeliveryQuality = quality;
         lastDeliveryBonus = precisionBonus + streakBonus;
+        shiftQualityTotal += quality;
+        shiftQualityCount += 1;
+        if (isPriority) shiftPriorityDelivered += 1;
+        if (c.massKg >= shiftHeavyThreshold) shiftHeavyDelivered += 1;
+
+        const focusGain = 8 + quality * 20
+          + (isPriority ? 8 : 0)
+          + (centerScore > 0.9 ? 6 : 0)
+          + (landingSpeed < 1.2 ? 6 : 0);
+        focus = clamp(focus + focusGain, 0, 100);
+        if (focus >= 100) {
+          flowTimer = 18;
+          flowFlash = 2.2;
+          focus = 0;
+        }
+
+        if (quality > 0.9) updateReputation(1);
+        if (quality < 0.35) updateReputation(-1);
         if (quality > 0.82) {
           deliveryStreak += 1;
         } else {
@@ -747,12 +959,17 @@ permalink: /crane.html
           shiftFlash = 2.6;
           conveyor.spawnMin = Math.max(1.2, conveyor.spawnMin * 0.95);
           conveyor.spawnMax = Math.max(2.2, conveyor.spawnMax * 0.95);
+          applyShiftContractRewards();
+          refreshShiftMetrics();
+          selectShiftContracts();
         }
         crates.splice(idx, 1);
         continue;
       }
 
       if (!c.picked && c.x <= conveyor.endX) {
+        money = Math.max(0, money - 4);
+        updateReputation(-1);
         crates.splice(idx, 1);
       }
     }
@@ -782,6 +999,11 @@ permalink: /crane.html
         if (load.carryingId) tryGrabOrRelease();
         load.vx += (Math.random() - 0.5) * 2.4;
         load.vy += -2.2;
+        if (!tipPenaltyApplied) {
+          safetyBreaks += 1;
+          updateReputation(-6);
+          tipPenaltyApplied = true;
+        }
       }
     } else {
       crane.thetaVel *= 0.98;
@@ -951,6 +1173,16 @@ permalink: /crane.html
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`Shift Complete +${moneyFmt.format(shiftBonus)}`, canvas.width*0.5, canvas.height*0.24);
+    }
+    if (flowFlash > 0 || flowActive) {
+      const alpha = flowActive ? 0.08 : clamp(flowFlash / 2.2, 0, 0.18);
+      ctx.fillStyle = `rgba(130,110,230,${alpha})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.font = `700 ${18*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FLOW STATE', canvas.width*0.5, canvas.height*0.28);
     }
 
     // Crane
@@ -1165,6 +1397,23 @@ permalink: /crane.html
       ? `${Math.round(lastDeliveryQuality * 100)}% precision`
       : 'No recent delivery';
     const streakLabel = deliveryStreak >= 2 ? `Streak x${deliveryStreak}` : 'No streak';
+    const repPct = Math.round(reputation);
+    const repLabel = `Tier ${repTier}`;
+    const flowLabel = flowActive ? `Flow ${Math.ceil(flowTimer)}s` : 'Flow ready';
+    const focusPct = Math.round(focus);
+    const contractHtml = shiftContracts.map((contract) => `
+      <div class="contract">
+        <div class="contract-title">
+          <span>${contract.title}</span>
+          <span class="tag">${contract.tag}</span>
+        </div>
+        <div class="contract-progress">${contract.progress()}</div>
+        <div class="bar" style="margin-top:6px">
+          <span style="width:${Math.round(contract.ratio() * 100)}%; background:${contract.complete() ? '#2ad379' : '#8ab4d6'}"></span>
+        </div>
+        <div class="bar-label"><span>${contract.complete() ? 'Completed' : 'In progress'}</span><span>+${moneyFmt.format(contract.bonus)}</span></div>
+      </div>
+    `).join('');
 
     hud.innerHTML = `
       <h3>Job Control</h3>
@@ -1187,6 +1436,18 @@ permalink: /crane.html
           <div class="bar"><span style="width:${Math.min(tensionPct, 120)}%; background:${tensionPct > 90 ? '#d65c5c' : '#2a3d4f'}"></span></div>
           <div class="bar-label"><span>Cable load</span><span>${tensionPct}%</span></div>
         </div>
+        <div class="stat">
+          <div class="stat-label">Reputation</div>
+          <div class="stat-value">${repLabel}</div>
+          <div class="bar"><span style="width:${repPct}%; background:#5c7bd6"></span></div>
+          <div class="bar-label"><span>${repPct}%</span><span>Pay x${repMultiplier().toFixed(2)}</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Focus</div>
+          <div class="stat-value">${flowLabel}</div>
+          <div class="bar"><span style="width:${focusPct}%; background:${flowActive ? '#2ad379' : '#a58be5'}"></span></div>
+          <div class="bar-label"><span>${focusPct}%</span><span>${flowActive ? 'Boosted' : 'Build it up'}</span></div>
+        </div>
       </div>
 
       <div style="margin-top:8px">
@@ -1194,6 +1455,12 @@ permalink: /crane.html
         <span class="pill">${carry}</span>
         <span class="pill"><b>Wind</b> ${windLabel}</span>
         <span class="pill"><b>Active loads</b> ${crates.length}</span>
+        <span class="pill"><b>Contracts</b> ${shiftContracts.length}</span>
+      </div>
+
+      <h3 style="margin-top:10px">Shift Contracts</h3>
+      <div class="grid">
+        ${contractHtml}
       </div>
 
       <h3 style="margin-top:10px">Rig & Safety</h3>

@@ -1,6 +1,0 @@
-
-
-<!--
-  <<< Author: Ryan Guild >>>
--->
-
