@@ -1,4 +1,7 @@
-```html
+---
+layout: null
+permalink: /crane.html
+---
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,37 +9,57 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Boom Crane Physics</title>
   <style>
-    html, body { margin:0; height:100%; background:#0b0f14; overflow:hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    html, body { margin:0; height:100%; background:#7cc8ff; overflow:hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     canvas { display:block; width:100vw; height:100vh; }
     .hud {
       position: fixed; left: 12px; top: 12px; z-index: 10;
-      color: #d7e2ff; font-size: 13px; line-height: 1.35;
-      background: rgba(10, 14, 20, 0.55); border: 1px solid rgba(180,200,255,0.12);
+      color: #0b1a24; font-size: 13px; line-height: 1.35;
+      background: rgba(255,255,255,0.75); border: 1px solid rgba(40,80,120,0.2);
       border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px);
       max-width: min(620px, calc(100vw - 24px));
       user-select: none;
     }
-    .hud b { color:#ffffff; }
+    .hud b { color:#0b1a24; }
     .row { display:flex; gap:10px; flex-wrap:wrap; }
     .pill {
-      padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(180,200,255,0.12);
-      background: rgba(255,255,255,0.04);
+      padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(40,80,120,0.2);
+      background: rgba(255,255,255,0.65);
     }
-    .warn { color:#ffd0d0; }
-    .ok { color:#c9ffdf; }
+    .upgrade-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .upgrade-btn {
+      border: 1px solid rgba(40,80,120,0.25);
+      background: rgba(255,255,255,0.75);
+      border-radius: 10px;
+      padding: 6px 8px;
+      font-size: 12px;
+      color: #0b1a24;
+      cursor: pointer;
+      user-select: none;
+    }
+    .upgrade-btn[data-disabled="true"] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .warn { color:#b94b4b; }
+    .ok { color:#1c7c4a; }
     .muted { opacity:.86; }
     .tip {
       position: fixed; left: 12px; bottom: 12px; z-index: 10;
-      color: #cfe0ff; font-size: 12px;
-      background: rgba(10, 14, 20, 0.45); border: 1px solid rgba(180,200,255,0.10);
+      color: #0b1a24; font-size: 12px;
+      background: rgba(255,255,255,0.7); border: 1px solid rgba(40,80,120,0.18);
       border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px);
       user-select: none;
       max-width: min(820px, calc(100vw - 24px));
     }
     .btn {
       position: fixed; right: 12px; top: 12px; z-index: 10;
-      color: #e9f0ff; font-size: 12px; cursor:pointer;
-      background: rgba(255,255,255,0.06); border: 1px solid rgba(180,200,255,0.16);
+      color: #0b1a24; font-size: 12px; cursor:pointer;
+      background: rgba(255,255,255,0.75); border: 1px solid rgba(40,80,120,0.18);
       border-radius: 999px; padding: 8px 10px;
       user-select: none;
     }
@@ -56,6 +79,9 @@
     <span class="pill">P</span> pause
     <div style="opacity:.85;margin-top:6px">
       New: HUD shows a live “load chart” (rated capacity at current radius + boom length) plus cable tension vs cable WLL.
+    </div>
+    <div style="opacity:.85;margin-top:6px">
+      Conveyor spawns random loads on the left. Drop them in the green zone to earn 1% of their weight in cash.
     </div>
   </div>
 
@@ -179,17 +205,11 @@
       r: 0.42,
       massKg,
       picked: false,
-      delivered: false,
       sleep: 0,
     };
   }
-  const crates0 = [
-    makeCrate("A", 2.5, groundY - 0.42, 800),
-    makeCrate("B", 4.4, groundY - 0.42, 1400),
-    makeCrate("C", 6.6, groundY - 0.42, 2200),
-    makeCrate("D", 8.7, groundY - 0.42, 3200),
-  ];
   let crates = [];
+  let nextCrateId = 1;
 
   // Target truck bed zone
   const truck = {
@@ -202,8 +222,33 @@
     zoneW: 3.8,
   };
 
-  let score = 0;
+  const conveyor = {
+    startX: -7.5,
+    endX: -16.5,
+    y: groundY,
+    speed: -0.7,
+    spawnMin: 2.2,
+    spawnMax: 4.2,
+    maxCrates: 7,
+    boxW: 2.3,
+    boxH: 0.9,
+  };
+
+  let deliveredCount = 0;
+  let money = 0;
   let time = 0;
+  let spawnTimer = 0;
+  let combo = 0;
+  let bestCombo = 0;
+  let lastDeliveryTime = -999;
+  let lastPayout = 0;
+  let payoutFlash = 0;
+  let goalMoney = 250;
+  let goalFlash = 0;
+  let order = null;
+  let wind = 0;
+  let windTarget = 0;
+  let windTimer = 0;
 
   function reset() {
     crane.x = -6.5;
@@ -224,9 +269,23 @@
     load.massKg = load.hookMassKg;
     load.tensionN = 0;
 
-    crates = crates0.map(c => ({...c}));
-    score = 0;
+    crates = [];
+    nextCrateId = 1;
+    deliveredCount = 0;
+    money = 0;
     time = 0;
+    spawnTimer = 0.6;
+    combo = 0;
+    bestCombo = 0;
+    lastDeliveryTime = -999;
+    lastPayout = 0;
+    payoutFlash = 0;
+    goalMoney = 250;
+    goalFlash = 0;
+    order = null;
+    wind = 0;
+    windTarget = 0;
+    windTimer = 6;
   }
   reset();
   document.getElementById('restart').addEventListener('click', reset);
@@ -275,6 +334,53 @@
     return Math.max(0, Math.min(a, b, c));
   }
 
+  function bestRatedKg() {
+    const minRadius = 0.35;
+    return Math.max(0, Math.min(
+      tipCapacityKgAtRadius(minRadius),
+      boomCapacityKgAtLength(crane.Lmin),
+      cableCapacityKg()
+    ));
+  }
+
+  function rollOrder() {
+    const best = bestRatedKg();
+    const minBound = 200;
+    const maxBound = 10000;
+    const center = lerp(best * 0.25, best * 1.05, Math.random());
+    const spread = Math.max(150, center * 0.18);
+    const minKg = clamp(center - spread, minBound, maxBound);
+    const maxKg = clamp(center + spread, minBound, maxBound);
+    order = {
+      minKg,
+      maxKg,
+      expiresAt: time + 22,
+    };
+  }
+
+  function randomLoadKg() {
+    const best = bestRatedKg();
+    const minKg = Math.max(100, best * 0.1);
+    const maxKg = Math.max(minKg, Math.min(10000, best * 3));
+    return Math.round(lerp(minKg, maxKg, Math.random()));
+  }
+
+  function spawnCrate() {
+    if (crates.length >= conveyor.maxCrates) return;
+    const massKg = randomLoadKg();
+    crates.push(makeCrate(`L${nextCrateId++}`, conveyor.startX, groundY - 0.42, massKg));
+  }
+
+  function upgradeCost(kind) {
+    const base = {
+      boomStrengthLevel: 140,
+      cableStrengthLevel: 120,
+      counterweightLevel: 160,
+    }[kind] || 150;
+    const level = upgrades[kind];
+    return Math.round(base * Math.pow(1.55, level));
+  }
+
   // ---------- Grabbing ----------
   function tryGrabOrRelease() {
     if (crane.tipped) return;
@@ -282,7 +388,7 @@
     if (load.carryingId) {
       const id = load.carryingId;
       const c = crates.find(k => k.id === id);
-      if (c && !c.delivered) {
+      if (c) {
         c.picked = false;
         c.x = load.x; c.y = load.y;
         c.vx = load.vx; c.vy = load.vy;
@@ -295,7 +401,7 @@
 
     let best = null, bestD = 1e9;
     for (const c of crates) {
-      if (c.delivered || c.picked) continue;
+      if (c.picked) continue;
       const d = Math.hypot(c.x - load.x, c.y - load.y);
       if (d < 0.85 && d < bestD) { bestD = d; best = c; }
     }
@@ -312,6 +418,19 @@
   // ---------- Physics ----------
   function step(dt) {
     time += dt;
+    payoutFlash = Math.max(0, payoutFlash - dt);
+    goalFlash = Math.max(0, goalFlash - dt);
+
+    if (!order || time > order.expiresAt) {
+      rollOrder();
+    }
+
+    windTimer -= dt;
+    if (windTimer <= 0) {
+      windTarget = (Math.random() * 2 - 1) * 2.4;
+      windTimer = 5 + Math.random() * 7;
+    }
+    wind = lerp(wind, windTarget, 0.02);
 
     view.camX = lerp(view.camX, crane.x + 5.0, 0.06);
     view.camY = lerp(view.camY, groundY - 1.8, 0.06);
@@ -378,6 +497,7 @@
     load.vx *= (1 - air * dt);
     load.vy *= (1 - air * dt);
     load.vy += G * dt;
+    load.vx += wind * dt;
     load.tensionN = 0;
 
     // Cable constraint
@@ -441,9 +561,15 @@
     }
     collideCircleWithFloor(load);
 
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnCrate();
+      spawnTimer = lerp(conveyor.spawnMin, conveyor.spawnMax, Math.random());
+    }
+
     // Crates
-    for (const c of crates) {
-      if (c.delivered) continue;
+    for (let idx = crates.length - 1; idx >= 0; idx--) {
+      const c = crates[idx];
 
       if (c.picked && load.carryingId === c.id) {
         c.x = load.x;
@@ -457,6 +583,16 @@
       c.vx *= (1 - drag * dt);
       c.vy *= (1 - drag * dt);
       c.vy += G * dt;
+      c.vx += wind * 0.6 * dt;
+
+      const onBelt = c.x <= conveyor.startX + 0.2
+        && c.x >= conveyor.endX - conveyor.boxW * 0.05
+        && c.y >= groundY - c.r - 0.08;
+      if (onBelt) {
+        c.vx = conveyor.speed;
+        c.vy = 0;
+        c.y = groundY - c.r;
+      }
 
       c.x += c.vx * dt;
       c.y += c.vy * dt;
@@ -467,12 +603,22 @@
 
       collideCircleWithFloor(c);
 
+      const zoneLeft = truck.zoneX - truck.zoneW/2;
+      const zoneRight = truck.zoneX + truck.zoneW/2;
+      const inZone = c.x > zoneLeft && c.x < zoneRight;
+
       if (c.x > bedLeft - 0.2 && c.x < bedRight + 0.2) {
         const topY = (truck.bedTopY) - c.r;
         if (c.y > topY && c.y < groundY && c.vy > 0) {
           c.y = topY;
-          c.vy *= -0.22;
-          c.vx *= 0.78;
+          if (inZone) {
+            c.vy = 0;
+            c.vx *= 0.6;
+            c.sleep += dt * 1.5;
+          } else {
+            c.vy *= -0.22;
+            c.vx *= 0.78;
+          }
         }
       }
 
@@ -480,11 +626,37 @@
       if (vmag < 0.25 && Math.abs(c.y - (truck.bedTopY - c.r)) < 0.05) c.sleep += dt;
       else c.sleep = 0;
 
-      const zoneLeft = truck.zoneX - truck.zoneW/2;
-      const zoneRight = truck.zoneX + truck.zoneW/2;
-      if (c.sleep > 0.8 && c.x > zoneLeft && c.x < zoneRight) {
-        c.delivered = true;
-        score += 1;
+      if (inZone && c.y >= truck.bedTopY - c.r - 0.02) {
+        c.y = truck.bedTopY - c.r;
+        c.vy = 0;
+        c.vx *= 0.7;
+      }
+
+      if (c.sleep > 0.8 && inZone) {
+        deliveredCount += 1;
+        const basePayout = c.massKg * 0.01;
+        const comboWindow = 12;
+        if (time - lastDeliveryTime <= comboWindow) combo += 1;
+        else combo = 1;
+        bestCombo = Math.max(bestCombo, combo);
+        lastDeliveryTime = time;
+        const comboBonus = clamp(combo * 0.06, 0, 0.6);
+        const inOrder = order && c.massKg >= order.minKg && c.massKg <= order.maxKg;
+        const orderBonus = inOrder ? 0.5 : 0;
+        const payout = basePayout * (1 + comboBonus + orderBonus);
+        money += payout;
+        lastPayout = payout;
+        payoutFlash = 2.2;
+        if (money >= goalMoney) {
+          goalMoney = Math.round(goalMoney * 1.6);
+          goalFlash = 3;
+        }
+        crates.splice(idx, 1);
+        continue;
+      }
+
+      if (!c.picked && c.x <= conveyor.endX) {
+        crates.splice(idx, 1);
       }
     }
 
@@ -522,24 +694,112 @@
 
   // ---------- Rendering ----------
   function draw() {
-    ctx.fillStyle = '#0b0f14';
+    ctx.fillStyle = '#7cc8ff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const yG = w2s(0, groundY).y;
 
-    const grad = ctx.createLinearGradient(0, yG - 200*devicePixelRatio, 0, yG + 220*devicePixelRatio);
-    grad.addColorStop(0, '#0b0f14');
-    grad.addColorStop(0.6, '#0b0f14');
-    grad.addColorStop(1, '#0d151f');
+    const grad = ctx.createLinearGradient(0, yG - 320*devicePixelRatio, 0, yG + 220*devicePixelRatio);
+    grad.addColorStop(0, '#7cc8ff');
+    grad.addColorStop(0.55, '#8fd4ff');
+    grad.addColorStop(1, '#bfe9ff');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.strokeStyle = 'rgba(180,220,255,0.12)';
-    ctx.lineWidth = 2 * devicePixelRatio;
+    ctx.fillStyle = '#61c45a';
+    ctx.fillRect(0, yG, canvas.width, canvas.height - yG);
+    ctx.strokeStyle = 'rgba(30,120,50,0.35)';
+    ctx.lineWidth = 3 * devicePixelRatio;
     ctx.beginPath();
     ctx.moveTo(0, yG);
     ctx.lineTo(canvas.width, yG);
     ctx.stroke();
+
+    function drawEdgeArrow(targetX, targetY, label, color) {
+      const margin = 36 * devicePixelRatio;
+      const sp = w2s(targetX, targetY);
+      const clampedX = clamp(sp.x, margin, canvas.width - margin);
+      const clampedY = clamp(sp.y, margin, canvas.height - margin);
+      const offscreen = (sp.x !== clampedX) || (sp.y !== clampedY);
+
+      if (!offscreen) return;
+
+      const angle = Math.atan2(sp.y - clampedY, sp.x - clampedX);
+      const arrowLen = 18 * devicePixelRatio;
+      const tipX = clampedX + Math.cos(angle) * arrowLen;
+      const tipY = clampedY + Math.sin(angle) * arrowLen;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 2 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.moveTo(clampedX, clampedY);
+      ctx.lineTo(tipX, tipY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - Math.cos(angle - 0.6) * 8 * devicePixelRatio, tipY - Math.sin(angle - 0.6) * 8 * devicePixelRatio);
+      ctx.lineTo(tipX - Math.cos(angle + 0.6) * 8 * devicePixelRatio, tipY - Math.sin(angle + 0.6) * 8 * devicePixelRatio);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.font = `600 ${12 * devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, clampedX, clampedY - 14 * devicePixelRatio);
+      ctx.restore();
+    }
+
+    // Conveyor
+    {
+      const beltH = 0.35;
+      const beltLeft = conveyor.endX;
+      const beltRight = conveyor.startX;
+      const p1 = w2s(beltLeft, conveyor.y - beltH);
+      const p2 = w2s(beltRight, conveyor.y);
+
+      ctx.fillStyle = '#dfe6ec';
+      ctx.strokeStyle = '#aab7c4';
+      ctx.lineWidth = 2 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.roundRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y, 8*devicePixelRatio);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = '#c0cad4';
+      ctx.setLineDash([6*devicePixelRatio, 8*devicePixelRatio]);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p2.y - 4*devicePixelRatio);
+      ctx.lineTo(p2.x, p2.y - 4*devicePixelRatio);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const boxLeft = conveyor.endX - conveyor.boxW;
+      const boxRight = conveyor.endX;
+      const boxTop = conveyor.y - conveyor.boxH;
+      const b1 = w2s(boxLeft, boxTop);
+      const b2 = w2s(boxRight, conveyor.y);
+      ctx.fillStyle = '#b8c1ca';
+      ctx.strokeStyle = '#909eab';
+      ctx.beginPath();
+      ctx.roundRect(b1.x, b1.y, b2.x - b1.x, b2.y - b1.y, 8*devicePixelRatio);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#2a3d4f';
+      ctx.font = `${11*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Scrap', (b1.x + b2.x)/2, b1.y + (b2.y - b1.y)/2);
+
+      ctx.fillStyle = '#2a3d4f';
+      ctx.font = `${12*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('Conveyor', p1.x + 6*devicePixelRatio, p1.y - 6*devicePixelRatio);
+    }
 
     // Truck
     {
@@ -548,8 +808,8 @@
       const p1 = w2s(bedLeft, truck.bedTopY);
       const p2 = w2s(bedRight, truck.y);
 
-      ctx.fillStyle = 'rgba(210,230,255,0.10)';
-      ctx.strokeStyle = 'rgba(210,230,255,0.20)';
+      ctx.fillStyle = '#d6e4ef';
+      ctx.strokeStyle = '#9cb4c9';
       ctx.lineWidth = 2 * devicePixelRatio;
       ctx.beginPath();
       ctx.roundRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y, 12*devicePixelRatio);
@@ -560,12 +820,40 @@
       const zr = truck.zoneX + truck.zoneW/2;
       const z1 = w2s(zl, truck.bedTopY);
       const z2 = w2s(zr, truck.y);
-      ctx.strokeStyle = 'rgba(140,255,190,0.35)';
+      ctx.strokeStyle = '#2ad379';
       ctx.setLineDash([10*devicePixelRatio, 8*devicePixelRatio]);
       ctx.beginPath();
       ctx.roundRect(z1.x, z1.y + 3*devicePixelRatio, z2.x - z1.x, z2.y - z1.y - 3*devicePixelRatio, 10*devicePixelRatio);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      ctx.fillStyle = '#1f8f52';
+      ctx.font = `${12*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('Drop Zone', (z1.x + z2.x)/2, z1.y - 6*devicePixelRatio);
+    }
+
+    drawEdgeArrow(truck.zoneX, truck.bedTopY, 'Drop Zone', '#1f8f52');
+    drawEdgeArrow(conveyor.startX - 1.2, conveyor.y - 0.4, 'Incoming Loads', '#2a3d4f');
+
+    if (payoutFlash > 0) {
+      const alpha = clamp(payoutFlash / 2.2, 0, 1);
+      const pop = w2s(truck.zoneX, truck.bedTopY - 0.8);
+      ctx.fillStyle = `rgba(20,120,60,${alpha})`;
+      ctx.font = `700 ${16*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`+${moneyFmt.format(lastPayout)}`, pop.x, pop.y);
+    }
+
+    if (goalFlash > 0) {
+      const alpha = clamp(goalFlash / 3, 0, 1);
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.font = `700 ${18*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('GOAL COMPLETE!', canvas.width * 0.5, canvas.height * 0.12);
     }
 
     // Crane
@@ -580,7 +868,7 @@
     {
       const mastBase = w2s(crane.x, crane.y);
       const mastTop = w2s(crane.x, crane.y - crane.mastH);
-      ctx.strokeStyle = 'rgba(200,220,255,0.22)';
+      ctx.strokeStyle = '#f7c44a';
       ctx.lineWidth = 10 * devicePixelRatio;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -594,7 +882,7 @@
       const bw = crane.baseWidth;
       const left = w2s(crane.x - bw/2, crane.y);
       const right = w2s(crane.x + bw/2, crane.y);
-      ctx.strokeStyle = 'rgba(200,220,255,0.20)';
+      ctx.strokeStyle = '#f2b93c';
       ctx.lineWidth = 16 * devicePixelRatio;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -605,7 +893,7 @@
 
     // Boom
     {
-      const boomColor = crane.tipped ? 'rgba(255,170,170,0.35)' : 'rgba(220,235,255,0.30)';
+      const boomColor = crane.tipped ? 'rgba(255,110,110,0.65)' : '#f5ce59';
       ctx.strokeStyle = boomColor;
       ctx.lineWidth = 7 * devicePixelRatio;
       ctx.lineCap = 'round';
@@ -622,15 +910,15 @@
       const dist = Math.hypot(load.x - hook.x, load.y - hook.y);
       const taut = (!crane.cableBroken) && dist > crane.cable * 0.995;
 
-      ctx.strokeStyle = crane.cableBroken ? 'rgba(255,120,120,0.55)'
-        : (taut ? 'rgba(255,255,255,0.38)' : 'rgba(255,255,255,0.16)');
+      ctx.strokeStyle = crane.cableBroken ? 'rgba(255,90,90,0.8)'
+        : (taut ? 'rgba(60,60,60,0.6)' : 'rgba(60,60,60,0.35)');
       ctx.lineWidth = (taut ? 2.3 : 1.6) * devicePixelRatio;
       ctx.beginPath();
       ctx.moveTo(hp.x, hp.y);
       ctx.lineTo(lp.x, lp.y);
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillStyle = 'rgba(40,40,40,0.7)';
       ctx.beginPath();
       ctx.arc(hp.x, hp.y, 3.2*devicePixelRatio, 0, Math.PI*2);
       ctx.fill();
@@ -639,8 +927,8 @@
     // Load
     {
       const lp = w2s(load.x, load.y);
-      ctx.fillStyle = load.carryingId ? 'rgba(255,230,180,0.85)' : 'rgba(210,220,255,0.75)';
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillStyle = load.carryingId ? '#ff9f45' : '#ffcc66';
+      ctx.strokeStyle = 'rgba(40,40,40,0.5)';
       ctx.lineWidth = 2 * devicePixelRatio;
       ctx.beginPath();
       ctx.arc(lp.x, lp.y, load.r * view.pxPerM, 0, Math.PI*2);
@@ -650,19 +938,18 @@
 
     // Crates
     for (const c of crates) {
-      if (c.delivered) continue;
       if (c.picked) continue;
       const p = w2s(c.x, c.y);
       const r = c.r * view.pxPerM;
-      ctx.fillStyle = 'rgba(255,240,210,0.18)';
-      ctx.strokeStyle = 'rgba(255,240,210,0.30)';
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#2a3d4f';
       ctx.lineWidth = 2 * devicePixelRatio;
       ctx.beginPath();
       ctx.roundRect(p.x - r, p.y - r, 2*r, 2*r, 10*devicePixelRatio);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(240,248,255,0.75)';
+      ctx.fillStyle = '#2a3d4f';
       ctx.font = `${12*devicePixelRatio}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -674,10 +961,11 @@
       const zoneLeft = truck.zoneX - truck.zoneW/2;
       const zoneRight = truck.zoneX + truck.zoneW/2;
       const topY = truck.bedTopY - 0.25;
-      for (let i=0; i<score; i++) {
-        const x = lerp(zoneLeft+0.4, zoneRight-0.4, (i+0.5)/Math.max(1, crates0.length));
+      const markers = Math.min(10, deliveredCount);
+      for (let i=0; i<markers; i++) {
+        const x = lerp(zoneLeft+0.4, zoneRight-0.4, (i+0.5)/Math.max(1, markers));
         const p = w2s(x, topY);
-        ctx.fillStyle = 'rgba(140,255,190,0.55)';
+        ctx.fillStyle = '#1f8f52';
         ctx.beginPath();
         ctx.arc(p.x, p.y, 5*devicePixelRatio, 0, Math.PI*2);
         ctx.fill();
@@ -686,27 +974,27 @@
 
     if (crane.tipRatio > 0.85 && !crane.tipped) {
       const a = clamp((crane.tipRatio - 0.85) / 0.35, 0, 1);
-      ctx.fillStyle = `rgba(255,120,120,${0.10*a})`;
+      ctx.fillStyle = `rgba(255,120,120,${0.18*a})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
     if (crane.tipped) {
-      ctx.fillStyle = 'rgba(255,190,190,0.12)';
+      ctx.fillStyle = 'rgba(255,160,160,0.25)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(255,220,220,0.92)';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.font = `700 ${28*devicePixelRatio}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('TIPPED', canvas.width*0.5, canvas.height*0.18);
       ctx.font = `500 ${14*devicePixelRatio}px system-ui`;
-      ctx.fillStyle = 'rgba(240,245,255,0.85)';
+      ctx.fillStyle = 'rgba(20,30,40,0.9)';
       ctx.fillText('Restart and keep the load closer / winch up before slewing.', canvas.width*0.5, canvas.height*0.18 + 26*devicePixelRatio);
     }
 
     if (crane.cableBroken && !crane.tipped) {
-      ctx.fillStyle = 'rgba(255,120,120,0.10)';
+      ctx.fillStyle = 'rgba(255,160,160,0.25)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(255,220,220,0.92)';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.font = `700 ${22*devicePixelRatio}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -717,13 +1005,27 @@
   // ---------- HUD ----------
   const hud = document.getElementById('hud');
 
+  hud.addEventListener('click', (event) => {
+    const button = event.target.closest('.upgrade-btn');
+    if (!button) return;
+    const kind = button.dataset.upgrade;
+    if (!kind) return;
+    const cost = upgradeCost(kind);
+    if (money < cost) return;
+    money -= cost;
+    upgrades[kind] += 1;
+  });
+
   const kgToLb = (kg) => kg * 2.2046226218;
+  const moneyFmt = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  });
 
   function updateHUD() {
     const dist = Math.hypot(load.x - hookPos().x, load.y - hookPos().y);
     const taut = (!crane.cableBroken) && dist > crane.cable * 0.995;
-
-    const remaining = crates.filter(c => !c.delivered).length;
 
     const r = radiusM();
     const tipKg = tipCapacityKgAtRadius(r);
@@ -740,11 +1042,19 @@
     const tensionClass = tensionPct > 100 ? 'warn' : (tensionPct > 85 ? 'warn' : 'ok');
 
     const carry = load.carryingId ? `Carrying <b>${load.carryingId}</b>` : 'Hook only';
+    const orderTime = order ? Math.max(0, order.expiresAt - time) : 0;
+    const orderText = order ? `${Math.round(order.minKg)}-${Math.round(order.maxKg)}kg` : '...';
+    const boomCost = upgradeCost('boomStrengthLevel');
+    const cableCost = upgradeCost('cableStrengthLevel');
+    const counterCost = upgradeCost('counterweightLevel');
+    const windLabel = wind >= 0 ? `→ ${wind.toFixed(1)} m/s` : `← ${Math.abs(wind).toFixed(1)} m/s`;
 
     hud.innerHTML = `
       <div class="row" style="margin-bottom:6px">
-        <span class="pill"><b>Score</b> ${score}/${crates0.length}</span>
-        <span class="pill"><b>Remaining</b> ${remaining}</span>
+        <span class="pill"><b>Delivered</b> ${deliveredCount}</span>
+        <span class="pill"><b>Active loads</b> ${crates.length}</span>
+        <span class="pill"><b>Money</b> ${moneyFmt.format(money)}</span>
+        <span class="pill"><b>Combo</b> ${combo}x</span>
         <span class="pill"><b>Total load</b> ${Math.round(load.massKg)}kg</span>
         <span class="pill"><b>Cable</b> ${crane.cableBroken ? '<span class="warn">broken</span>' : (taut ? '<span class="ok">taut</span>' : 'slack')}</span>
       </div>
@@ -754,6 +1064,17 @@
         <span class="pill"><b>Boom</b> ${crane.L.toFixed(1)}m</span>
         <span class="pill"><b>Angle</b> ${(crane.theta * 57.2958).toFixed(0)}°</span>
         <span class="pill"><b>Winch</b> ${crane.cable.toFixed(1)}m</span>
+        <span class="pill"><b>Wind</b> ${windLabel}</span>
+      </div>
+
+      <div style="margin-top:8px">
+        <b>Order</b> ${orderText}
+        <span class="pill" style="margin-left:6px"><b>Time</b> ${orderTime.toFixed(0)}s</span>
+        <span class="muted" style="margin-left:6px">Bonus: +50%</span>
+      </div>
+
+      <div style="margin-top:8px">
+        <b>Goal</b> Earn ${moneyFmt.format(goalMoney)}
       </div>
 
       <div style="margin-top:8px">
@@ -777,6 +1098,18 @@
         ${carry}
         ${crane.tipped ? ` — <span class="warn"><b>Crane is down.</b></span>` : ''}
         ${crane.cableBroken && !crane.tipped ? ` — <span class="warn"><b>Winch disabled.</b></span>` : ''}
+      </div>
+
+      <div class="upgrade-row">
+        <button class="upgrade-btn" data-upgrade="boomStrengthLevel" data-disabled="${money < boomCost}">
+          Boom +${upgrades.boomStrengthLevel} • ${moneyFmt.format(boomCost)}
+        </button>
+        <button class="upgrade-btn" data-upgrade="cableStrengthLevel" data-disabled="${money < cableCost}">
+          Cable +${upgrades.cableStrengthLevel} • ${moneyFmt.format(cableCost)}
+        </button>
+        <button class="upgrade-btn" data-upgrade="counterweightLevel" data-disabled="${money < counterCost}">
+          Counterweight +${upgrades.counterweightLevel} • ${moneyFmt.format(counterCost)}
+        </button>
       </div>
 
       <div class="muted" style="margin-top:6px">
@@ -825,4 +1158,3 @@
 </script>
 </body>
 </html>
-```
