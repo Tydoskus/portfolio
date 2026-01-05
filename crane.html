@@ -594,15 +594,6 @@ permalink: /crane.html
         c.y = groundY - c.r;
       }
 
-      onBelt = c.x <= conveyor.startX + 0.2
-        && c.x >= conveyor.endX - conveyor.boxW * 0.05
-        && c.y >= groundY - c.r - 0.08;
-      if (onBelt) {
-        c.vx = conveyor.speed;
-        c.vy = 0;
-        c.y = groundY - c.r;
-      }
-
       c.x += c.vx * dt;
       c.y += c.vy * dt;
 
