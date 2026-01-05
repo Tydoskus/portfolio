@@ -594,6 +594,15 @@ permalink: /crane.html
         c.y = groundY - c.r;
       }
 
+      const onBelt = c.x <= conveyor.startX + 0.2
+        && c.x >= conveyor.endX - conveyor.boxW * 0.05
+        && c.y >= groundY - c.r - 0.08;
+      if (onBelt) {
+        c.vx = conveyor.speed;
+        c.vy = 0;
+        c.y = groundY - c.r;
+      }
+
       c.x += c.vx * dt;
       c.y += c.vy * dt;
 
@@ -856,6 +865,9 @@ permalink: /crane.html
       ctx.fillText('GOAL COMPLETE!', canvas.width * 0.5, canvas.height * 0.12);
     }
 
+    drawEdgeArrow(truck.zoneX, truck.bedTopY, 'Drop Zone', '#1f8f52');
+    drawEdgeArrow(conveyor.startX - 1.2, conveyor.y - 0.4, 'Incoming Loads', '#2a3d4f');
+
     // Crane
     const pivot = boomPivot();
     const tip = boomTip();
@@ -1065,6 +1077,16 @@ permalink: /crane.html
         <span class="pill"><b>Angle</b> ${(crane.theta * 57.2958).toFixed(0)}°</span>
         <span class="pill"><b>Winch</b> ${crane.cable.toFixed(1)}m</span>
         <span class="pill"><b>Wind</b> ${windLabel}</span>
+      </div>
+
+      <div style="margin-top:8px">
+        <b>Order</b> ${orderText}
+        <span class="pill" style="margin-left:6px"><b>Time</b> ${orderTime.toFixed(0)}s</span>
+        <span class="muted" style="margin-left:6px">Bonus: +50%</span>
+      </div>
+
+      <div style="margin-top:8px">
+        <b>Goal</b> Earn ${moneyFmt.format(goalMoney)}
       </div>
 
       <div style="margin-top:8px">
