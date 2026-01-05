@@ -246,6 +246,9 @@ permalink: /crane.html
   let goalMoney = 250;
   let goalFlash = 0;
   let order = null;
+  let wind = 0;
+  let windTarget = 0;
+  let windTimer = 0;
 
   function reset() {
     crane.x = -6.5;
@@ -280,6 +283,9 @@ permalink: /crane.html
     goalMoney = 250;
     goalFlash = 0;
     order = null;
+    wind = 0;
+    windTarget = 0;
+    windTimer = 6;
   }
   reset();
   document.getElementById('restart').addEventListener('click', reset);
@@ -419,6 +425,13 @@ permalink: /crane.html
       rollOrder();
     }
 
+    windTimer -= dt;
+    if (windTimer <= 0) {
+      windTarget = (Math.random() * 2 - 1) * 2.4;
+      windTimer = 5 + Math.random() * 7;
+    }
+    wind = lerp(wind, windTarget, 0.02);
+
     view.camX = lerp(view.camX, crane.x + 5.0, 0.06);
     view.camY = lerp(view.camY, groundY - 1.8, 0.06);
 
@@ -484,6 +497,7 @@ permalink: /crane.html
     load.vx *= (1 - air * dt);
     load.vy *= (1 - air * dt);
     load.vy += G * dt;
+    load.vx += wind * dt;
     load.tensionN = 0;
 
     // Cable constraint
@@ -569,6 +583,16 @@ permalink: /crane.html
       c.vx *= (1 - drag * dt);
       c.vy *= (1 - drag * dt);
       c.vy += G * dt;
+      c.vx += wind * 0.6 * dt;
+
+      const onBelt = c.x <= conveyor.startX + 0.2
+        && c.x >= conveyor.endX - conveyor.boxW * 0.05
+        && c.y >= groundY - c.r - 0.08;
+      if (onBelt) {
+        c.vx = conveyor.speed;
+        c.vy = 0;
+        c.y = groundY - c.r;
+      }
 
       const onBelt = c.x <= conveyor.startX + 0.2
         && c.x >= conveyor.endX - conveyor.boxW * 0.05
@@ -1035,6 +1059,7 @@ permalink: /crane.html
     const boomCost = upgradeCost('boomStrengthLevel');
     const cableCost = upgradeCost('cableStrengthLevel');
     const counterCost = upgradeCost('counterweightLevel');
+    const windLabel = wind >= 0 ? `→ ${wind.toFixed(1)} m/s` : `← ${Math.abs(wind).toFixed(1)} m/s`;
 
     hud.innerHTML = `
       <div class="row" style="margin-bottom:6px">
@@ -1051,6 +1076,17 @@ permalink: /crane.html
         <span class="pill"><b>Boom</b> ${crane.L.toFixed(1)}m</span>
         <span class="pill"><b>Angle</b> ${(crane.theta * 57.2958).toFixed(0)}°</span>
         <span class="pill"><b>Winch</b> ${crane.cable.toFixed(1)}m</span>
+        <span class="pill"><b>Wind</b> ${windLabel}</span>
+      </div>
+
+      <div style="margin-top:8px">
+        <b>Order</b> ${orderText}
+        <span class="pill" style="margin-left:6px"><b>Time</b> ${orderTime.toFixed(0)}s</span>
+        <span class="muted" style="margin-left:6px">Bonus: +50%</span>
+      </div>
+
+      <div style="margin-top:8px">
+        <b>Goal</b> Earn ${moneyFmt.format(goalMoney)}
       </div>
 
       <div style="margin-top:8px">
