@@ -1470,13 +1470,15 @@ permalink: /crane.html
   const hud = document.getElementById('hud');
 
   hud.addEventListener('click', (event) => {
-    const toggle = event.target.closest('.hud-toggle');
+    const target = event.target instanceof Element ? event.target : null;
+    const toggle = target?.closest('.hud-toggle');
     if (toggle) {
       hudExpanded = !hudExpanded;
       localStorage.setItem('hudExpanded', String(hudExpanded));
+      updateHUD();
       return;
     }
-    const button = event.target.closest('.upgrade-btn');
+    const button = target?.closest('.upgrade-btn');
     if (!button) return;
     const kind = button.dataset.upgrade;
     if (!kind) return;
