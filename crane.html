@@ -540,8 +540,6 @@
       if (vmag < 0.25 && Math.abs(c.y - (truck.bedTopY - c.r)) < 0.05) c.sleep += dt;
       else c.sleep = 0;
 
-      const zoneLeft = truck.zoneX - truck.zoneW/2;
-      const zoneRight = truck.zoneX + truck.zoneW/2;
       if (c.x > zoneLeft && c.x < zoneRight && c.y >= groundY - c.r - 0.02) {
         c.y = groundY - c.r;
         c.vy = 0;
