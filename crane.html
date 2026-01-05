@@ -13,12 +13,39 @@ permalink: /crane.html
     canvas { display:block; width:100vw; height:100vh; }
     .hud {
       position: fixed; left: 12px; top: 12px; z-index: 10;
-      color: #0b1a24; font-size: 13px; line-height: 1.35;
-      background: rgba(255,255,255,0.76); border: 1px solid rgba(40,80,120,0.2);
-      border-radius: 14px; padding: 12px 14px; backdrop-filter: blur(8px);
-      max-width: min(680px, calc(100vw - 24px));
+      color: #0b1a24; font-size: 12px; line-height: 1.35;
+      background: rgba(255,255,255,0.82); border: 1px solid rgba(40,80,120,0.2);
+      border-radius: 14px; padding: 10px 12px; backdrop-filter: blur(8px);
+      max-width: min(360px, calc(100vw - 24px));
+      max-height: min(70vh, calc(100vh - 24px));
+      overflow: auto;
       user-select: none;
-      box-shadow: 0 10px 30px rgba(28,46,72,0.12);
+      box-shadow: 0 10px 24px rgba(28,46,72,0.12);
+    }
+    .hud.expanded {
+      max-width: min(560px, calc(100vw - 24px));
+    }
+    .hud-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .hud-toggle {
+      border: 1px solid rgba(40,80,120,0.25);
+      background: rgba(255,255,255,0.8);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      color: #0b1a24;
+    }
+    .details {
+      display: none;
+    }
+    .hud.expanded .details {
+      display: block;
     }
     .hud h3 {
       margin: 0 0 6px 0;
@@ -28,7 +55,6 @@ permalink: /crane.html
       opacity: 0.7;
     }
     .hud b { color:#0b1a24; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -99,11 +125,14 @@ permalink: /crane.html
     .muted { opacity:.86; }
     .tip {
       position: fixed; left: 12px; bottom: 12px; z-index: 10;
-      color: #0b1a24; font-size: 12px;
+      color: #0b1a24; font-size: 11px;
       background: rgba(255,255,255,0.7); border: 1px solid rgba(40,80,120,0.18);
-      border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px);
+      border-radius: 12px; padding: 8px 10px; backdrop-filter: blur(6px);
       user-select: none;
-      max-width: min(820px, calc(100vw - 24px));
+      max-width: min(560px, calc(100vw - 24px));
+    }
+    .tip.hidden {
+      display: none;
     }
     .btn {
       position: fixed; right: 12px; top: 12px; z-index: 10;
@@ -111,19 +140,6 @@ permalink: /crane.html
       background: rgba(255,255,255,0.75); border: 1px solid rgba(40,80,120,0.18);
       border-radius: 999px; padding: 8px 10px;
       user-select: none;
-    }
-    .meter {
-      position: relative;
-      height: 10px;
-      background: rgba(30,50,70,0.12);
-      border-radius: 999px;
-      overflow: hidden;
-    }
-    .meter > span {
-      position: absolute;
-      inset: 0;
-      transform-origin: left;
-      border-radius: 999px;
     }
     .contract {
       border: 1px dashed rgba(40,80,120,0.35);
@@ -158,16 +174,17 @@ permalink: /crane.html
   <div class="btn" id="restart">Restart</div>
   <div class="tip">
     <b>Controls</b> —
-    <span class="pill">A / D</span> boom rotate,
-    <span class="pill">W / S</span> extend/retract,
-    <span class="pill">I / K</span> winch up/down,
-    <span class="pill">← / →</span> move crane,
-    <span class="pill">Space</span> grab/release,
-    <span class="pill">R</span> damp swing (small),
-    <span class="pill">P</span> pause
+    <span class="pill">A / D</span> rotate,
+    <span class="pill">W / S</span> extend,
+    <span class="pill">I / K</span> winch,
+    <span class="pill">← / →</span> drive,
+    <span class="pill">Space</span> grab,
+    <span class="pill">R</span> damp,
+    <span class="pill">P</span> pause,
+    <span class="pill">H</span> help
     <div style="opacity:.85;margin-top:6px">
-      Drop loads in the green zone to earn cash, then buy upgrades. Smooth landings earn precision bonuses. Priority loads (★) pay more.
-      Complete shift contracts to unlock flow state for control boosts and extra pay.
+      Drop loads in the green zone for cash, chain clean drops for combo pay, and clear rush orders (⚡) before the timer.
+      Complete shift contracts to unlock flow boosts and extra pay.
     </div>
   </div>
 
@@ -181,6 +198,7 @@ permalink: /crane.html
 
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d', { alpha: false });
+  const tip = document.querySelector('.tip');
 
   function resize() {
     canvas.width = Math.floor(window.innerWidth * devicePixelRatio);
@@ -207,10 +225,20 @@ permalink: /crane.html
 
   // ---------- Input ----------
   const keys = new Set();
+  let hudExpanded = localStorage.getItem('hudExpanded') === 'true';
+  let helpVisible = localStorage.getItem('helpVisible') !== 'false';
+  tip.classList.toggle('hidden', !helpVisible);
+
   window.addEventListener('keydown', (e) => {
     if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
-    keys.add(e.key.toLowerCase());
-    if (e.key.toLowerCase() === 'p') paused = !paused;
+    const key = e.key.toLowerCase();
+    keys.add(key);
+    if (key === 'p') paused = !paused;
+    if (key === 'h') {
+      helpVisible = !helpVisible;
+      localStorage.setItem('helpVisible', String(helpVisible));
+      tip.classList.toggle('hidden', !helpVisible);
+    }
   });
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
@@ -226,6 +254,8 @@ permalink: /crane.html
     boomStrengthLevel: 0,   // increases boom structural WLL
     cableStrengthLevel: 0,  // increases cable WLL
     counterweightLevel: 0,  // increases tipping capacity
+    hydraulicsLevel: 0,     // increases control speed
+    stabilityLevel: 0,      // reduces sway + wind impact
   };
   const upgradeMult = (lvl, step) => 1 + lvl * step;
 
@@ -334,6 +364,7 @@ permalink: /crane.html
   let lastPayout = 0;
   let payoutFlash = 0;
   let lastPayoutWasPriority = false;
+  let lastPayoutWasRush = false;
   let lastDeliveryQuality = 0;
   let lastDeliveryBonus = 0;
   let deliveryStreak = 0;
@@ -365,6 +396,13 @@ permalink: /crane.html
   let overloadCooldown = 0;
   let tipPenaltyApplied = false;
   let cablePenaltyApplied = false;
+  let rushId = null;
+  let rushTimer = 0;
+  let rushCooldown = 10;
+  let rushBonus = 0;
+  let rushFlash = 0;
+  let rushSuccesses = 0;
+  let rushFailures = 0;
 
   function reset() {
     crane.x = craneStart.x;
@@ -380,6 +418,8 @@ permalink: /crane.html
     upgrades.boomStrengthLevel = 0;
     upgrades.cableStrengthLevel = 0;
     upgrades.counterweightLevel = 0;
+    upgrades.hydraulicsLevel = 0;
+    upgrades.stabilityLevel = 0;
 
     load.x = crane.x + 4;
     load.y = crane.y - crane.mastH + 5;
@@ -397,6 +437,7 @@ permalink: /crane.html
     lastPayout = 0;
     payoutFlash = 0;
     lastPayoutWasPriority = false;
+    lastPayoutWasRush = false;
     lastDeliveryQuality = 0;
     lastDeliveryBonus = 0;
     deliveryStreak = 0;
@@ -508,11 +549,34 @@ permalink: /crane.html
     priorityId = best ? best.id : null;
   }
 
+  function selectRushLoad() {
+    if (crates.length === 0) {
+      rushId = null;
+      return;
+    }
+    const rated = overallRatedKg();
+    const candidates = crates.filter((crate) => !crate.picked);
+    if (candidates.length === 0) {
+      rushId = null;
+      return;
+    }
+    const eligible = candidates.filter((crate) => crate.massKg <= rated * 1.15);
+    const pickFrom = eligible.length ? eligible : candidates;
+    pickFrom.sort((a, b) => b.massKg - a.massKg);
+    const chosen = pickFrom[0];
+    rushId = chosen.id;
+    rushTimer = clamp(18 - shiftLevel * 0.6, 9, 18);
+    rushBonus = Math.round(60 + shiftLevel * 18 + chosen.massKg * 0.015);
+    rushFlash = 1.8;
+  }
+
   function upgradeCost(kind) {
     const base = {
       boomStrengthLevel: 140,
       cableStrengthLevel: 120,
       counterweightLevel: 160,
+      hydraulicsLevel: 150,
+      stabilityLevel: 130,
     }[kind] || 150;
     const level = upgrades[kind];
     return Math.round(base * Math.pow(1.55, level));
@@ -591,6 +655,13 @@ permalink: /crane.html
     overloadCooldown = 0;
     tipPenaltyApplied = false;
     cablePenaltyApplied = false;
+    rushId = null;
+    rushTimer = 0;
+    rushCooldown = 10;
+    rushBonus = 0;
+    rushFlash = 0;
+    rushSuccesses = 0;
+    rushFailures = 0;
   }
 
   function selectShiftContracts() {
@@ -657,12 +728,33 @@ permalink: /crane.html
     time += dt;
     payoutFlash = Math.max(0, payoutFlash - dt);
     flowFlash = Math.max(0, flowFlash - dt);
+    rushFlash = Math.max(0, rushFlash - dt);
 
     if (flowTimer > 0) {
       flowTimer = Math.max(0, flowTimer - dt);
     }
     flowActive = flowTimer > 0;
     overloadCooldown = Math.max(0, overloadCooldown - dt);
+    rushCooldown = Math.max(0, rushCooldown - dt);
+
+    if (rushId) {
+      rushTimer = Math.max(0, rushTimer - dt);
+      const rushMissing = !crates.some((crate) => crate.id === rushId);
+      if (rushMissing) {
+        rushId = null;
+        rushTimer = 0;
+        rushCooldown = 12 + Math.random() * 8;
+      } else if (rushTimer <= 0) {
+        rushId = null;
+        rushCooldown = 12 + Math.random() * 8;
+        rushFailures += 1;
+        money = Math.max(0, money - 18);
+        updateReputation(-2);
+      }
+    } else if (rushCooldown <= 0) {
+      selectRushLoad();
+      rushCooldown = 18 + Math.random() * 10;
+    }
 
     windTimer -= dt;
     if (windTimer <= 0) {
@@ -702,13 +794,16 @@ permalink: /crane.html
     if (r) { load.vx *= 0.985; load.vy *= 0.985; }
 
     const flowBoost = flowActive ? 1.12 : 1;
+    const controlMult = upgradeMult(upgrades.hydraulicsLevel, 0.08);
+    const stabilityDamp = clamp(1 - upgrades.stabilityLevel * 0.05, 0.65, 1);
+    const windResist = 1 / upgradeMult(upgrades.stabilityLevel, 0.08);
 
     if (!crane.tipped) {
       // Drive base
       let drive = 0;
       if (left) drive -= 1;
       if (right) drive += 1;
-      crane.x += drive * crane.driveRate * flowBoost * dt;
+      crane.x += drive * crane.driveRate * controlMult * flowBoost * dt;
 
       // Rotate boom (slew)
       let rot = 0;
@@ -716,7 +811,7 @@ permalink: /crane.html
       if (d) rot += 1;
       const util = clamp(load.massKg / Math.max(1, overallRatedKg()), 0, 2.5);
       const slewScale = clamp(1.0 - 0.55 * util, 0.25, 1.0);
-      const targetThetaVel = rot * crane.slewRate * slewScale * flowBoost;
+      const targetThetaVel = rot * crane.slewRate * controlMult * slewScale * flowBoost;
       crane.thetaVel = lerp(crane.thetaVel, targetThetaVel, 0.22);
       crane.theta += crane.thetaVel * dt;
 
@@ -724,7 +819,7 @@ permalink: /crane.html
       let tel = 0;
       if (w) tel -= 1;
       if (s) tel += 1;
-      const targetLVel = (-tel) * crane.telescopeRate * flowBoost;
+      const targetLVel = (-tel) * crane.telescopeRate * controlMult * flowBoost;
       crane.LVel = lerp(crane.LVel, targetLVel, 0.18);
       crane.L = clamp(crane.L + crane.LVel * dt, crane.Lmin, crane.Lmax);
 
@@ -733,7 +828,7 @@ permalink: /crane.html
         let win = 0;
         if (i) win -= 1;
         if (k) win += 1;
-        const targetCV = win * crane.winchRate * flowBoost;
+        const targetCV = win * crane.winchRate * controlMult * flowBoost;
         crane.cableVel = lerp(crane.cableVel, targetCV, 0.18);
         crane.cable = clamp(crane.cable + crane.cableVel * dt, crane.cableMin, crane.cableMax);
       } else {
@@ -748,7 +843,7 @@ permalink: /crane.html
     load.vx *= (1 - air * dt);
     load.vy *= (1 - air * dt);
     load.vy += G * dt;
-    load.vx += wind * dt * (flowActive ? 0.6 : 1);
+    load.vx += wind * dt * windResist * (flowActive ? 0.6 : 1);
     load.tensionN = 0;
 
     // Cable constraint
@@ -765,7 +860,7 @@ permalink: /crane.html
 
         const relVel = load.vx * nx + load.vy * ny;
         const kSpring = crane.ropeStiff;
-        const cDamp = crane.ropeDamp;
+        const cDamp = crane.ropeDamp * upgradeMult(upgrades.stabilityLevel, 0.12);
 
         // Tension estimate used for cable WLL display & snapping
         const tensionN = Math.max(0, (kSpring * stretch) + (cDamp * relVel));
@@ -813,6 +908,7 @@ permalink: /crane.html
       if (overloadCooldown <= 0) {
         overloadEvents += 1;
         updateReputation(-1);
+        deliveryStreak = Math.max(0, deliveryStreak - 1);
         overloadCooldown = 5;
       }
     }
@@ -908,6 +1004,7 @@ permalink: /crane.html
         shiftDelivered += 1;
         const basePayout = c.massKg * 0.01;
         const isPriority = c.id === priorityId;
+        const isRush = c.id === rushId && rushTimer > 0;
         const centerOffset = Math.abs(c.x - truck.zoneX);
         const centerScore = clamp(1 - (centerOffset / (truck.zoneW * 0.5)), 0, 1);
         const landingSpeed = Math.hypot(c.vx, c.vy);
@@ -915,14 +1012,17 @@ permalink: /crane.html
         const quality = clamp((centerScore + speedScore) * 0.5, 0, 1);
         const precisionBonus = basePayout * quality * 0.28;
         const streakBonus = deliveryStreak >= 2 ? basePayout * 0.12 : 0;
-        const payoutRaw = basePayout * (1 + (isPriority ? priorityBonus : 0)) + precisionBonus + streakBonus;
-        const payout = payoutRaw * repMultiplier() * (flowActive ? 1.15 : 1);
+        const rushBonusApplied = isRush ? rushBonus : 0;
+        const comboMult = 1 + Math.min(0.25, Math.max(0, deliveryStreak - 1) * 0.04);
+        const payoutRaw = basePayout * (1 + (isPriority ? priorityBonus : 0)) + precisionBonus + streakBonus + rushBonusApplied;
+        const payout = payoutRaw * repMultiplier() * (flowActive ? 1.15 : 1) * comboMult;
         money += payout;
         lastPayout = payout;
         payoutFlash = 2.2;
         lastPayoutWasPriority = isPriority;
+        lastPayoutWasRush = isRush;
         lastDeliveryQuality = quality;
-        lastDeliveryBonus = precisionBonus + streakBonus;
+        lastDeliveryBonus = precisionBonus + streakBonus + rushBonusApplied + (payoutRaw * (comboMult - 1));
         shiftQualityTotal += quality;
         shiftQualityCount += 1;
         if (isPriority) shiftPriorityDelivered += 1;
@@ -930,6 +1030,7 @@ permalink: /crane.html
 
         const focusGain = 8 + quality * 20
           + (isPriority ? 8 : 0)
+          + (isRush ? 10 : 0)
           + (centerScore > 0.9 ? 6 : 0)
           + (landingSpeed < 1.2 ? 6 : 0);
         focus = clamp(focus + focusGain, 0, 100);
@@ -949,6 +1050,13 @@ permalink: /crane.html
         if (isPriority) {
           priorityId = null;
           priorityTimer = 0.2;
+        }
+        if (isRush) {
+          rushId = null;
+          rushTimer = 0;
+          rushCooldown = 14 + Math.random() * 10;
+          rushSuccesses += 1;
+          updateReputation(2);
         }
         if (shiftDelivered >= shiftGoal) {
           shiftDelivered = 0;
@@ -991,7 +1099,7 @@ permalink: /crane.html
 
     if (!crane.tipped) {
       const over = tipRatio - 1.0;
-      if (over > 0) crane.tipAccum += over * dt;
+      if (over > 0) crane.tipAccum += over * dt * stabilityDamp;
       else crane.tipAccum = Math.max(0, crane.tipAccum - 0.65 * dt);
 
       if (crane.tipAccum > 0.9) {
@@ -1159,11 +1267,16 @@ permalink: /crane.html
     if (payoutFlash > 0) {
       const alpha = clamp(payoutFlash / 2.2, 0, 1);
       const pop = w2s(truck.zoneX, truck.bedTopY - 0.8);
-      ctx.fillStyle = lastPayoutWasPriority ? `rgba(172,122,0,${alpha})` : `rgba(20,120,60,${alpha})`;
+      const payoutColor = lastPayoutWasRush
+        ? `rgba(200,70,70,${alpha})`
+        : (lastPayoutWasPriority ? `rgba(172,122,0,${alpha})` : `rgba(20,120,60,${alpha})`);
+      ctx.fillStyle = payoutColor;
       ctx.font = `700 ${16*devicePixelRatio}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const label = lastPayoutWasPriority ? `★ +${moneyFmt.format(lastPayout)}` : `+${moneyFmt.format(lastPayout)}`;
+      const label = lastPayoutWasRush
+        ? `⚡ +${moneyFmt.format(lastPayout)}`
+        : (lastPayoutWasPriority ? `★ +${moneyFmt.format(lastPayout)}` : `+${moneyFmt.format(lastPayout)}`);
       ctx.fillText(label, pop.x, pop.y);
     }
     if (shiftFlash > 0) {
@@ -1173,6 +1286,14 @@ permalink: /crane.html
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`Shift Complete +${moneyFmt.format(shiftBonus)}`, canvas.width*0.5, canvas.height*0.24);
+    }
+    if (rushFlash > 0) {
+      const alpha = clamp(rushFlash / 1.8, 0, 1);
+      ctx.fillStyle = `rgba(200,70,70,${alpha})`;
+      ctx.font = `700 ${16*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('RUSH ORDER LIVE', canvas.width*0.5, canvas.height*0.2);
     }
     if (flowFlash > 0 || flowActive) {
       const alpha = flowActive ? 0.08 : clamp(flowFlash / 2.2, 0, 0.18);
@@ -1269,10 +1390,11 @@ permalink: /crane.html
     for (const c of crates) {
       if (c.picked) continue;
       const isPriority = c.id === priorityId;
+      const isRush = c.id === rushId && rushTimer > 0;
       const p = w2s(c.x, c.y);
       const r = c.r * view.pxPerM;
-      ctx.fillStyle = isPriority ? '#ffe6a6' : '#ffffff';
-      ctx.strokeStyle = isPriority ? '#d0981a' : '#2a3d4f';
+      ctx.fillStyle = isRush ? '#ffd6d6' : (isPriority ? '#ffe6a6' : '#ffffff');
+      ctx.strokeStyle = isRush ? '#c74d4d' : (isPriority ? '#d0981a' : '#2a3d4f');
       ctx.lineWidth = 2 * devicePixelRatio;
       ctx.beginPath();
       ctx.roundRect(p.x - r, p.y - r, 2*r, 2*r, 10*devicePixelRatio);
@@ -1289,6 +1411,12 @@ permalink: /crane.html
         ctx.font = `${11*devicePixelRatio}px system-ui`;
         ctx.textBaseline = 'bottom';
         ctx.fillText('★ Priority', p.x, p.y - r - 4*devicePixelRatio);
+      }
+      if (isRush) {
+        ctx.fillStyle = '#a73232';
+        ctx.font = `${11*devicePixelRatio}px system-ui`;
+        ctx.textBaseline = 'top';
+        ctx.fillText(`⚡ Rush ${Math.ceil(rushTimer)}s`, p.x, p.y + r + 4*devicePixelRatio);
       }
     }
 
@@ -1342,6 +1470,12 @@ permalink: /crane.html
   const hud = document.getElementById('hud');
 
   hud.addEventListener('click', (event) => {
+    const toggle = event.target.closest('.hud-toggle');
+    if (toggle) {
+      hudExpanded = !hudExpanded;
+      localStorage.setItem('hudExpanded', String(hudExpanded));
+      return;
+    }
     const button = event.target.closest('.upgrade-btn');
     if (!button) return;
     const kind = button.dataset.upgrade;
@@ -1391,16 +1525,26 @@ permalink: /crane.html
     const boomDisabled = money < boomCost;
     const cableDisabled = money < cableCost;
     const counterDisabled = money < counterCost;
+    const hydraulicsCost = upgradeCost('hydraulicsLevel');
+    const stabilityCost = upgradeCost('stabilityLevel');
+    const hydraulicsDisabled = money < hydraulicsCost;
+    const stabilityDisabled = money < stabilityCost;
     const windLabel = wind >= 0 ? `→ ${wind.toFixed(1)} m/s` : `← ${Math.abs(wind).toFixed(1)} m/s`;
     const shiftProgress = Math.round((shiftDelivered / shiftGoal) * 100);
     const qualityLabel = lastDeliveryQuality > 0
       ? `${Math.round(lastDeliveryQuality * 100)}% precision`
       : 'No recent delivery';
     const streakLabel = deliveryStreak >= 2 ? `Streak x${deliveryStreak}` : 'No streak';
+    const comboMult = 1 + Math.min(0.25, Math.max(0, deliveryStreak - 1) * 0.04);
+    const comboLabel = comboMult > 1 ? `Combo x${comboMult.toFixed(2)}` : 'Combo ready';
     const repPct = Math.round(reputation);
     const repLabel = `Tier ${repTier}`;
     const flowLabel = flowActive ? `Flow ${Math.ceil(flowTimer)}s` : 'Flow ready';
     const focusPct = Math.round(focus);
+    const rushLabel = rushId ? `Rush ${rushId} • ${Math.ceil(rushTimer)}s` : 'Rush incoming';
+    const rushSummary = rushId ? `⚡ ${rushLabel}` : '⚡ Rush queued';
+    const hydraulicsBoostPct = upgrades.hydraulicsLevel * 8;
+    const stabilityBoostPct = upgrades.stabilityLevel * 5;
     const contractHtml = shiftContracts.map((contract) => `
       <div class="contract">
         <div class="contract-title">
@@ -1415,8 +1559,16 @@ permalink: /crane.html
       </div>
     `).join('');
 
+    hud.className = hudExpanded ? 'hud expanded' : 'hud';
     hud.innerHTML = `
-      <h3>Job Control</h3>
+      <div class="hud-header">
+        <div>
+          <h3 style="margin:0">Ops Panel</h3>
+          <div class="muted" style="font-size:11px">${hudExpanded ? 'Shift telemetry' : 'Compact view'}</div>
+        </div>
+        <button class="hud-toggle">${hudExpanded ? 'Collapse' : 'Expand'}</button>
+      </div>
+
       <div class="grid">
         <div class="stat">
           <div class="stat-label">Money</div>
@@ -1431,77 +1583,100 @@ permalink: /crane.html
           <div class="bar-label"><span>Utilization</span><span>${utilPct}%</span></div>
         </div>
         <div class="stat">
-          <div class="stat-label">Deliveries</div>
-          <div class="stat-value">${deliveredCount}</div>
-          <div class="bar"><span style="width:${Math.min(tensionPct, 120)}%; background:${tensionPct > 90 ? '#d65c5c' : '#2a3d4f'}"></span></div>
-          <div class="bar-label"><span>Cable load</span><span>${tensionPct}%</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Reputation</div>
-          <div class="stat-value">${repLabel}</div>
-          <div class="bar"><span style="width:${repPct}%; background:#5c7bd6"></span></div>
-          <div class="bar-label"><span>${repPct}%</span><span>Pay x${repMultiplier().toFixed(2)}</span></div>
-        </div>
-        <div class="stat">
           <div class="stat-label">Focus</div>
           <div class="stat-value">${flowLabel}</div>
           <div class="bar"><span style="width:${focusPct}%; background:${flowActive ? '#2ad379' : '#a58be5'}"></span></div>
           <div class="bar-label"><span>${focusPct}%</span><span>${flowActive ? 'Boosted' : 'Build it up'}</span></div>
         </div>
-      </div>
-
-      <div style="margin-top:8px">
-        <span class="pill">${priority}</span>
-        <span class="pill">${carry}</span>
-        <span class="pill"><b>Wind</b> ${windLabel}</span>
-        <span class="pill"><b>Active loads</b> ${crates.length}</span>
-        <span class="pill"><b>Contracts</b> ${shiftContracts.length}</span>
-      </div>
-
-      <h3 style="margin-top:10px">Shift Contracts</h3>
-      <div class="grid">
-        ${contractHtml}
-      </div>
-
-      <h3 style="margin-top:10px">Rig & Safety</h3>
-      <div class="grid">
         <div class="stat">
-          <div class="stat-label">Rated Capacity</div>
-          <div class="stat-value ${utilClass}">${Math.round(ratedKg)}kg</div>
-          <div class="bar-label"><span>${Math.round(kgToLb(ratedKg))} lb</span><span>Radius ${r.toFixed(1)}m</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Boom / Winch</div>
-          <div class="stat-value">${crane.L.toFixed(1)}m • ${crane.cable.toFixed(1)}m</div>
-          <div class="bar-label"><span>Angle ${(crane.theta * 57.2958).toFixed(0)}°</span><span>${taut ? 'Cable taut' : 'Cable slack'}</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Precision</div>
-          <div class="stat-value">${qualityLabel}</div>
+          <div class="stat-label">Combo</div>
+          <div class="stat-value">${comboLabel}</div>
           <div class="bar-label"><span>${streakLabel}</span><span>${lastDeliveryBonus > 0 ? `Bonus +${moneyFmt.format(lastDeliveryBonus)}` : ''}</span></div>
         </div>
       </div>
 
-      <div class="muted" style="margin-top:6px">
-        Limits — Tip ${Math.round(tipKg)}kg • Boom ${Math.round(boomKg)}kg • Cable ${Math.round(cableKg)}kg
+      <div style="margin-top:8px">
+        <span class="pill">${priority}</span>
+        <span class="pill">${rushSummary}</span>
+        <span class="pill">${carry}</span>
       </div>
 
-      <div style="margin-top:6px; opacity:.92">
-        ${crane.tipped ? ` <span class="warn"><b>Crane is down.</b></span>` : ''}
-        ${crane.cableBroken && !crane.tipped ? ` <span class="warn"><b>Winch disabled.</b></span>` : ''}
-      </div>
+      <div class="details">
+        <div style="margin-top:8px">
+          <span class="pill"><b>Wind</b> ${windLabel}</span>
+          <span class="pill"><b>Active loads</b> ${crates.length}</span>
+          <span class="pill"><b>Contracts</b> ${shiftContracts.length}</span>
+          <span class="pill"><b>Reputation</b> ${repLabel} (${repPct}%)</span>
+        </div>
 
-      <h3 style="margin-top:10px">Upgrades</h3>
-      <div class="upgrade-row">
-        <button class="upgrade-btn" data-upgrade="boomStrengthLevel" ${boomDisabled ? 'disabled' : ''}>
-          Boom Lv ${upgrades.boomStrengthLevel} → ${upgrades.boomStrengthLevel + 1} (+22% WLL) • ${moneyFmt.format(boomCost)}
-        </button>
-        <button class="upgrade-btn" data-upgrade="cableStrengthLevel" ${cableDisabled ? 'disabled' : ''}>
-          Cable Lv ${upgrades.cableStrengthLevel} → ${upgrades.cableStrengthLevel + 1} (+25% WLL) • ${moneyFmt.format(cableCost)}
-        </button>
-        <button class="upgrade-btn" data-upgrade="counterweightLevel" ${counterDisabled ? 'disabled' : ''}>
-          Counterweight Lv ${upgrades.counterweightLevel} → ${upgrades.counterweightLevel + 1} (+18% tip) • ${moneyFmt.format(counterCost)}
-        </button>
+        <h3 style="margin-top:10px">Rush Ops</h3>
+        <div class="grid">
+          <div class="stat">
+            <div class="stat-label">Current Rush</div>
+            <div class="stat-value">${rushLabel}</div>
+            <div class="bar-label"><span>Bonus ${moneyFmt.format(rushBonus || 0)}</span><span>${rushId ? `${Math.ceil(rushTimer)}s left` : `Cooldown ${Math.ceil(rushCooldown)}s`}</span></div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Performance</div>
+            <div class="stat-value">${rushSuccesses} success</div>
+            <div class="bar-label"><span>${rushFailures} missed</span><span>+Rep on wins</span></div>
+          </div>
+        </div>
+
+        <h3 style="margin-top:10px">Shift Contracts</h3>
+        <div class="grid">
+          ${contractHtml}
+        </div>
+
+        <h3 style="margin-top:10px">Rig & Safety</h3>
+        <div class="grid">
+          <div class="stat">
+            <div class="stat-label">Rated Capacity</div>
+            <div class="stat-value ${utilClass}">${Math.round(ratedKg)}kg</div>
+            <div class="bar-label"><span>${Math.round(kgToLb(ratedKg))} lb</span><span>Radius ${r.toFixed(1)}m</span></div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Boom / Winch</div>
+            <div class="stat-value">${crane.L.toFixed(1)}m • ${crane.cable.toFixed(1)}m</div>
+            <div class="bar-label"><span>Angle ${(crane.theta * 57.2958).toFixed(0)}°</span><span>${taut ? 'Cable taut' : 'Cable slack'}</span></div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Precision</div>
+            <div class="stat-value">${qualityLabel}</div>
+            <div class="bar-label"><span>${streakLabel}</span><span>Pay x${repMultiplier().toFixed(2)}</span></div>
+          </div>
+        </div>
+
+        <div class="muted" style="margin-top:6px">
+          Limits — Tip ${Math.round(tipKg)}kg • Boom ${Math.round(boomKg)}kg • Cable ${Math.round(cableKg)}kg
+        </div>
+        <div class="muted" style="margin-top:4px">
+          Systems — Hydraulics +${hydraulicsBoostPct}% speed • Stabilizers ${stabilityBoostPct}% sway control
+        </div>
+
+        <div style="margin-top:6px; opacity:.92">
+          ${crane.tipped ? ` <span class="warn"><b>Crane is down.</b></span>` : ''}
+          ${crane.cableBroken && !crane.tipped ? ` <span class="warn"><b>Winch disabled.</b></span>` : ''}
+        </div>
+
+        <h3 style="margin-top:10px">Upgrades</h3>
+        <div class="upgrade-row">
+          <button class="upgrade-btn" data-upgrade="boomStrengthLevel" ${boomDisabled ? 'disabled' : ''}>
+            Boom Lv ${upgrades.boomStrengthLevel} → ${upgrades.boomStrengthLevel + 1} (+22% WLL) • ${moneyFmt.format(boomCost)}
+          </button>
+          <button class="upgrade-btn" data-upgrade="cableStrengthLevel" ${cableDisabled ? 'disabled' : ''}>
+            Cable Lv ${upgrades.cableStrengthLevel} → ${upgrades.cableStrengthLevel + 1} (+25% WLL) • ${moneyFmt.format(cableCost)}
+          </button>
+          <button class="upgrade-btn" data-upgrade="counterweightLevel" ${counterDisabled ? 'disabled' : ''}>
+            Counterweight Lv ${upgrades.counterweightLevel} → ${upgrades.counterweightLevel + 1} (+18% tip) • ${moneyFmt.format(counterCost)}
+          </button>
+          <button class="upgrade-btn" data-upgrade="hydraulicsLevel" ${hydraulicsDisabled ? 'disabled' : ''}>
+            Hydraulics Lv ${upgrades.hydraulicsLevel} → ${upgrades.hydraulicsLevel + 1} (+8% speed) • ${moneyFmt.format(hydraulicsCost)}
+          </button>
+          <button class="upgrade-btn" data-upgrade="stabilityLevel" ${stabilityDisabled ? 'disabled' : ''}>
+            Stabilizers Lv ${upgrades.stabilityLevel} → ${upgrades.stabilityLevel + 1} (+wind +sway control) • ${moneyFmt.format(stabilityCost)}
+          </button>
+        </div>
       </div>
     `;
   }
