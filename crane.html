@@ -14,16 +14,65 @@ permalink: /crane.html
     .hud {
       position: fixed; left: 12px; top: 12px; z-index: 10;
       color: #0b1a24; font-size: 13px; line-height: 1.35;
-      background: rgba(255,255,255,0.75); border: 1px solid rgba(40,80,120,0.2);
-      border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px);
-      max-width: min(620px, calc(100vw - 24px));
+      background: rgba(255,255,255,0.76); border: 1px solid rgba(40,80,120,0.2);
+      border-radius: 14px; padding: 12px 14px; backdrop-filter: blur(8px);
+      max-width: min(680px, calc(100vw - 24px));
       user-select: none;
+      box-shadow: 0 10px 30px rgba(28,46,72,0.12);
+    }
+    .hud h3 {
+      margin: 0 0 6px 0;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.7;
     }
     .hud b { color:#0b1a24; }
     .row { display:flex; gap:10px; flex-wrap:wrap; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px;
+    }
     .pill {
-      padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(40,80,120,0.2);
-      background: rgba(255,255,255,0.65);
+      padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(40,80,120,0.2);
+      background: rgba(255,255,255,0.7);
+      font-weight: 600;
+    }
+    .stat {
+      background: rgba(255,255,255,0.75);
+      border: 1px solid rgba(40,80,120,0.18);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .stat-label {
+      font-size: 11px;
+      opacity: 0.7;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .stat-value {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .bar {
+      position: relative;
+      height: 8px;
+      background: rgba(30,50,70,0.1);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .bar > span {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      border-radius: 999px;
+    }
+    .bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      opacity: 0.75;
+      margin-top: 4px;
     }
     .upgrade-row {
       display: flex;
@@ -78,7 +127,7 @@ permalink: /crane.html
     <span class="pill">R</span> damp swing (small),
     <span class="pill">P</span> pause
     <div style="opacity:.85;margin-top:6px">
-      Drop loads in the green zone to earn cash, then buy upgrades. Priority loads (★) pay more.
+      Drop loads in the green zone to earn cash, then buy upgrades. Smooth landings earn precision bonuses. Priority loads (★) pay more.
     </div>
   </div>
 
@@ -245,12 +294,20 @@ permalink: /crane.html
   let lastPayout = 0;
   let payoutFlash = 0;
   let lastPayoutWasPriority = false;
+  let lastDeliveryQuality = 0;
+  let lastDeliveryBonus = 0;
+  let deliveryStreak = 0;
   let priorityId = null;
   let priorityTimer = 0;
   const priorityBonus = 0.15;
   let wind = 0;
   let windTarget = 0;
   let windTimer = 0;
+  let shiftLevel = 1;
+  let shiftGoal = 4;
+  let shiftDelivered = 0;
+  let shiftFlash = 0;
+  let shiftBonus = 0;
 
   function reset() {
     crane.x = craneStart.x;
@@ -283,11 +340,19 @@ permalink: /crane.html
     lastPayout = 0;
     payoutFlash = 0;
     lastPayoutWasPriority = false;
+    lastDeliveryQuality = 0;
+    lastDeliveryBonus = 0;
+    deliveryStreak = 0;
     priorityId = null;
     priorityTimer = 0.6;
     wind = 0;
     windTarget = 0;
     windTimer = 6;
+    shiftLevel = 1;
+    shiftGoal = 4;
+    shiftDelivered = 0;
+    shiftFlash = 0;
+    shiftBonus = 0;
   }
   reset();
   document.getElementById('restart').addEventListener('click', reset);
@@ -430,10 +495,13 @@ permalink: /crane.html
 
     windTimer -= dt;
     if (windTimer <= 0) {
-      windTarget = (Math.random() * 2 - 1) * 2.4;
-      windTimer = 5 + Math.random() * 7;
+      const windRange = 2.2 + shiftLevel * 0.3;
+      windTarget = (Math.random() * 2 - 1) * windRange;
+      windTimer = 4.5 + Math.random() * 6;
     }
     wind = lerp(wind, windTarget, 0.02);
+
+    shiftFlash = Math.max(0, shiftFlash - dt);
 
     priorityTimer -= dt;
     const priorityMissing = priorityId && !crates.some((crate) => crate.id === priorityId);
@@ -442,8 +510,8 @@ permalink: /crane.html
       priorityTimer = 2.4;
     }
 
-    view.camX = lerp(view.camX, crane.x + 5.0, 0.06);
-    view.camY = lerp(view.camY, groundY - 1.8, 0.06);
+    view.camX = lerp(view.camX, crane.x, 0.08);
+    view.camY = lerp(view.camY, groundY - 1.7, 0.08);
 
     const left = keys.has('arrowleft');
     const right = keys.has('arrowright');
@@ -644,16 +712,41 @@ permalink: /crane.html
 
       if (c.sleep > 0.8 && inZone) {
         deliveredCount += 1;
+        shiftDelivered += 1;
         const basePayout = c.massKg * 0.01;
         const isPriority = c.id === priorityId;
-        const payout = basePayout * (1 + (isPriority ? priorityBonus : 0));
+        const centerOffset = Math.abs(c.x - truck.zoneX);
+        const centerScore = clamp(1 - (centerOffset / (truck.zoneW * 0.5)), 0, 1);
+        const landingSpeed = Math.hypot(c.vx, c.vy);
+        const speedScore = clamp(1 - (landingSpeed / 2.6), 0, 1);
+        const quality = clamp((centerScore + speedScore) * 0.5, 0, 1);
+        const precisionBonus = basePayout * quality * 0.28;
+        const streakBonus = deliveryStreak >= 2 ? basePayout * 0.12 : 0;
+        const payout = basePayout * (1 + (isPriority ? priorityBonus : 0)) + precisionBonus + streakBonus;
         money += payout;
         lastPayout = payout;
         payoutFlash = 2.2;
         lastPayoutWasPriority = isPriority;
+        lastDeliveryQuality = quality;
+        lastDeliveryBonus = precisionBonus + streakBonus;
+        if (quality > 0.82) {
+          deliveryStreak += 1;
+        } else {
+          deliveryStreak = 0;
+        }
         if (isPriority) {
           priorityId = null;
           priorityTimer = 0.2;
+        }
+        if (shiftDelivered >= shiftGoal) {
+          shiftDelivered = 0;
+          shiftLevel += 1;
+          shiftGoal = Math.round(shiftGoal * 1.3 + 1);
+          shiftBonus = 65 + shiftLevel * 22;
+          money += shiftBonus;
+          shiftFlash = 2.6;
+          conveyor.spawnMin = Math.max(1.2, conveyor.spawnMin * 0.95);
+          conveyor.spawnMax = Math.max(2.2, conveyor.spawnMax * 0.95);
         }
         crates.splice(idx, 1);
         continue;
@@ -850,6 +943,14 @@ permalink: /crane.html
       ctx.textBaseline = 'middle';
       const label = lastPayoutWasPriority ? `★ +${moneyFmt.format(lastPayout)}` : `+${moneyFmt.format(lastPayout)}`;
       ctx.fillText(label, pop.x, pop.y);
+    }
+    if (shiftFlash > 0) {
+      const alpha = clamp(shiftFlash / 2.6, 0, 1);
+      ctx.fillStyle = `rgba(60,110,200,${alpha})`;
+      ctx.font = `700 ${18*devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`Shift Complete +${moneyFmt.format(shiftBonus)}`, canvas.width*0.5, canvas.height*0.24);
     }
 
     // Crane
@@ -1059,52 +1160,71 @@ permalink: /crane.html
     const cableDisabled = money < cableCost;
     const counterDisabled = money < counterCost;
     const windLabel = wind >= 0 ? `→ ${wind.toFixed(1)} m/s` : `← ${Math.abs(wind).toFixed(1)} m/s`;
+    const shiftProgress = Math.round((shiftDelivered / shiftGoal) * 100);
+    const qualityLabel = lastDeliveryQuality > 0
+      ? `${Math.round(lastDeliveryQuality * 100)}% precision`
+      : 'No recent delivery';
+    const streakLabel = deliveryStreak >= 2 ? `Streak x${deliveryStreak}` : 'No streak';
 
     hud.innerHTML = `
-      <div class="row" style="margin-bottom:6px">
-        <span class="pill"><b>Delivered</b> ${deliveredCount}</span>
-        <span class="pill"><b>Money</b> ${moneyFmt.format(money)}</span>
-        <span class="pill"><b>Active loads</b> ${crates.length}</span>
-        <span class="pill"><b>Load</b> ${Math.round(load.massKg)}kg</span>
-        <span class="pill"><b>Status</b> <span class="${statusClass}">${statusLabel}</span></span>
-        <span class="pill"><b>Cable</b> ${crane.cableBroken ? '<span class="warn">broken</span>' : (taut ? '<span class="ok">taut</span>' : 'slack')}</span>
-      </div>
-
-      <div class="row">
-        <span class="pill"><b>Radius</b> ${r.toFixed(1)}m</span>
-        <span class="pill"><b>Boom</b> ${crane.L.toFixed(1)}m</span>
-        <span class="pill"><b>Angle</b> ${(crane.theta * 57.2958).toFixed(0)}°</span>
-        <span class="pill"><b>Winch</b> ${crane.cable.toFixed(1)}m</span>
-        <span class="pill"><b>Wind</b> ${windLabel}</span>
+      <h3>Job Control</h3>
+      <div class="grid">
+        <div class="stat">
+          <div class="stat-label">Money</div>
+          <div class="stat-value">${moneyFmt.format(money)}</div>
+          <div class="bar"><span style="width:${shiftProgress}%; background:#2ad379"></span></div>
+          <div class="bar-label"><span>Shift ${shiftLevel}</span><span>${shiftDelivered}/${shiftGoal}</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Status</div>
+          <div class="stat-value ${statusClass}">${statusLabel}</div>
+          <div class="bar"><span style="width:${Math.min(utilPct, 100)}%; background:${util > 0.9 ? '#d65c5c' : '#2ad379'}"></span></div>
+          <div class="bar-label"><span>Utilization</span><span>${utilPct}%</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Deliveries</div>
+          <div class="stat-value">${deliveredCount}</div>
+          <div class="bar"><span style="width:${Math.min(tensionPct, 120)}%; background:${tensionPct > 90 ? '#d65c5c' : '#2a3d4f'}"></span></div>
+          <div class="bar-label"><span>Cable load</span><span>${tensionPct}%</span></div>
+        </div>
       </div>
 
       <div style="margin-top:8px">
-        <b>Rated capacity (this setup)</b>:
-        <span class="${utilClass}"><b>${Math.round(ratedKg)}kg</b></span>
-        <span class="muted">(${Math.round(kgToLb(ratedKg))}lb)</span>
-        <span class="pill" style="margin-left:6px"><b>Util</b> <span class="${utilClass}">${utilPct}%</span></span>
+        <span class="pill">${priority}</span>
+        <span class="pill">${carry}</span>
+        <span class="pill"><b>Wind</b> ${windLabel}</span>
+        <span class="pill"><b>Active loads</b> ${crates.length}</span>
+      </div>
+
+      <h3 style="margin-top:10px">Rig & Safety</h3>
+      <div class="grid">
+        <div class="stat">
+          <div class="stat-label">Rated Capacity</div>
+          <div class="stat-value ${utilClass}">${Math.round(ratedKg)}kg</div>
+          <div class="bar-label"><span>${Math.round(kgToLb(ratedKg))} lb</span><span>Radius ${r.toFixed(1)}m</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Boom / Winch</div>
+          <div class="stat-value">${crane.L.toFixed(1)}m • ${crane.cable.toFixed(1)}m</div>
+          <div class="bar-label"><span>Angle ${(crane.theta * 57.2958).toFixed(0)}°</span><span>${taut ? 'Cable taut' : 'Cable slack'}</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Precision</div>
+          <div class="stat-value">${qualityLabel}</div>
+          <div class="bar-label"><span>${streakLabel}</span><span>${lastDeliveryBonus > 0 ? `Bonus +${moneyFmt.format(lastDeliveryBonus)}` : ''}</span></div>
+        </div>
       </div>
 
       <div class="muted" style="margin-top:6px">
-        Limits — Tip: ${Math.round(tipKg)}kg • Boom: ${Math.round(boomKg)}kg • Cable: ${Math.round(cableKg)}kg
-      </div>
-
-      <div class="muted" style="margin-top:6px">
-        Cable tension: <span class="${tensionClass}"><b>${Math.round(tensionKg)}kg</b></span>
-        <span class="muted">(${Math.round(kgToLb(tensionKg))}lb)</span>
-        <span class="pill" style="margin-left:6px"><b>WLL</b> <span class="${tensionClass}">${tensionPct}%</span></span>
+        Limits — Tip ${Math.round(tipKg)}kg • Boom ${Math.round(boomKg)}kg • Cable ${Math.round(cableKg)}kg
       </div>
 
       <div style="margin-top:6px; opacity:.92">
-        ${priority}
+        ${crane.tipped ? ` <span class="warn"><b>Crane is down.</b></span>` : ''}
+        ${crane.cableBroken && !crane.tipped ? ` <span class="warn"><b>Winch disabled.</b></span>` : ''}
       </div>
 
-      <div style="margin-top:8px; opacity:.92">
-        ${carry}
-        ${crane.tipped ? ` — <span class="warn"><b>Crane is down.</b></span>` : ''}
-        ${crane.cableBroken && !crane.tipped ? ` — <span class="warn"><b>Winch disabled.</b></span>` : ''}
-      </div>
-
+      <h3 style="margin-top:10px">Upgrades</h3>
       <div class="upgrade-row">
         <button class="upgrade-btn" data-upgrade="boomStrengthLevel" ${boomDisabled ? 'disabled' : ''}>
           Boom Lv ${upgrades.boomStrengthLevel} → ${upgrades.boomStrengthLevel + 1} (+22% WLL) • ${moneyFmt.format(boomCost)}
