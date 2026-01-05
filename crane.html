@@ -594,7 +594,7 @@ permalink: /crane.html
         c.y = groundY - c.r;
       }
 
-      const onBelt = c.x <= conveyor.startX + 0.2
+      onBelt = c.x <= conveyor.startX + 0.2
         && c.x >= conveyor.endX - conveyor.boxW * 0.05
         && c.y >= groundY - c.r - 0.08;
       if (onBelt) {
