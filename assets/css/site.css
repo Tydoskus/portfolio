@@ -137,45 +137,38 @@ h3{
 
 .muted{ color: var(--muted); }
 
-/* Buttons */
+/* Section headings: add visible accent rules */
+.section-head h2{
+  position: relative;
+  padding-bottom: 10px;
+}
+.section-head h2::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:0;
+  width: 76px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--haze);
+}
+
+/* Buttons (solid palette fills, no gradients) */
 .btn{
   display:inline-flex;
   align-items:center;
   justify-content:center;
   padding: 12px 16px;
   border-radius: 14px;
-  border: 1px solid rgba(24,69,78,.22); /* ocean */
+  border: 2px solid var(--ocean);
+  background: var(--ivory);
+  color: var(--ocean);
   transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
   user-select:none;
 }
 
 .btn:hover{ transform: translateY(-1px); }
-
-.btn:focus{
-  box-shadow: 0 0 0 6px rgba(224,141,45,.28); /* haze */
-}
-
-.btn-primary{
-  background: var(--sunrise);
-  color: var(--ivory);
-  box-shadow: 0 12px 26px rgba(243,73,43,.22); /* sunrise */
-  border-color: rgba(243,73,43,.60);
-}
-
-.btn-primary:hover{
-  box-shadow: 0 16px 34px rgba(243,73,43,.28);
-}
-
-.btn-secondary{
-  background: var(--evening);
-  color: var(--ivory);
-  box-shadow: 0 12px 26px rgba(229,111,51,.22); /* evening */
-  border-color: rgba(229,111,51,.60);
-}
-
-.btn-secondary:hover{
-  box-shadow: 0 16px 34px rgba(229,111,51,.28);
-}
+.btn:focus{ box-shadow: 0 0 0 6px rgba(224,141,45,.30); } /* haze alpha ok */
 
 .btn-small{
   padding: 10px 12px;
@@ -183,20 +176,72 @@ h3{
   font-size: 14px;
 }
 
-/* Grid + Cards */
-.grid{
-  display:grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+.btn-sunrise{
+  background: var(--sunrise);
+  border-color: var(--sunrise);
+  color: var(--ivory);
 }
 
-.grid.two{ grid-template-columns: repeat(2, 1fr); }
+.btn-evening{
+  background: var(--evening);
+  border-color: var(--evening);
+  color: var(--ivory);
+}
 
+.btn-ocean{
+  background: var(--ocean);
+  border-color: var(--ocean);
+  color: var(--ivory);
+}
+
+/* Tags: each tag is a real palette color chip */
+.tag{
+  display:inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 2px solid var(--ocean);
+  background: var(--ivory);
+  color: var(--ocean);
+  font-size: 12px;
+}
+
+.tag-ocean{
+  background: var(--ocean);
+  border-color: var(--ocean);
+  color: var(--ivory);
+}
+.tag-hemp{
+  background: var(--hemp);
+  border-color: var(--hemp);
+  color: var(--ivory);
+}
+.tag-shell{
+  background: var(--shell);
+  border-color: var(--shell);
+  color: var(--ocean);
+}
+.tag-sunrise{
+  background: var(--sunrise);
+  border-color: var(--sunrise);
+  color: var(--ivory);
+}
+.tag-evening{
+  background: var(--evening);
+  border-color: var(--evening);
+  color: var(--ivory);
+}
+.tag-haze{
+  background: var(--haze);
+  border-color: var(--haze);
+  color: var(--ocean);
+}
+
+/* Cards: strong top accent bars using the palette */
 .card{
-  border: 1px solid var(--border);
+  border: 2px solid rgba(118,110,53,.35); /* hemp alpha */
   border-radius: var(--radius);
-  background: rgba(250,243,231,.92); /* ivory */
-  box-shadow: var(--shadow);
+  background: var(--ivory);
+  box-shadow: 0 14px 34px rgba(24,69,78,.14); /* ocean alpha */
   padding: 18px;
   display:flex;
   flex-direction:column;
@@ -205,32 +250,30 @@ h3{
   overflow: hidden;
 }
 
-.card-top{ flex:1; }
-
-.card-actions{
-  display:flex;
-  gap: 10px;
-  align-items:center;
-  flex-wrap: wrap;
-  margin-top: 12px;
+.card::before{
+  content:"";
+  position:absolute;
+  left:0; top:0; right:0;
+  height: 10px;
 }
 
-.tags{
-  margin-top: 12px;
-  display:flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.accent-ocean::before{ background: var(--ocean); }
+.accent-sunrise::before{ background: var(--sunrise); }
+.accent-shell::before{ background: var(--shell); }
+
+/* Give one card a shell-tinted body so the palette shows more */
+.card-shell{
+  background: rgba(241,163,164,.18); /* shell alpha */
+  border-color: rgba(241,163,164,.55);
 }
 
-.tag{
-  display:inline-flex;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(118,110,53,.10); /* hemp */
-  color: var(--text);
-  font-size: 12px;
+/* Nav hover uses palette more clearly */
+.nav a:hover{
+  background: rgba(241,163,164,.35); /* shell alpha */
+  color: var(--ocean);
+  border: 1px solid rgba(241,163,164,.70);
 }
+
 
 /* Card accent bars (still only palette colors) */
 .card-accent-ocean::before,
