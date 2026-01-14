@@ -15,7 +15,7 @@
   --border: rgba(118,110,53, .35);    /* hemp @ alpha */
   --shadow: 0 14px 34px rgba(24,69,78,.14);
 
-  --radius: 18px;
+  --radius: 1px;
   --max: 980px;
 }
 
