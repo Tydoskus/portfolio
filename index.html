@@ -1,0 +1,131 @@
+---
+layout: none
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ site.title | default: "Ryan Guild" }}</title>
+  <meta name="description" content="{{ site.description | default: "Portfolio" }}" />
+  <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="{{ '/' | relative_url }}">Ryan Guild</a>
+      <nav class="nav">
+        <a href="#projects">Projects</a>
+        <a href="#about">About</a>
+        <a href="#links">Links</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <p class="pill">Interactive demos • web builds</p>
+      <h1>Ryan Guild</h1>
+      <p class="sub">
+        Independent builder of practical software and interactive demos.
+      </p>
+      <div class="cta-row">
+        <a class="btn" href="#projects">View projects</a>
+        <a class="btn btn-ghost" href="#links">Contact</a>
+      </div>
+    </section>
+
+    <section id="projects" class="section">
+      <div class="section-head">
+        <h2>Projects</h2>
+        <p class="muted">Playable builds and prototypes.</p>
+      </div>
+
+      <div class="grid">
+        <article class="card">
+          <div class="card-top">
+            <h3>Boom Crane Physics</h3>
+            <p class="muted">
+              Physics-focused crane simulator with satisfying constraints and motion.
+            </p>
+          </div>
+          <div class="card-actions">
+            <a class="btn btn-small" href="{{ '/crane.html' | relative_url }}">Play</a>
+            <a class="btn btn-small btn-ghost" href="{{ '/crane.html' | relative_url }}">Details</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <h3>Territory Conquer</h3>
+            <p class="muted">
+              Territory-control prototype with troop generation and AI pressure.
+            </p>
+          </div>
+          <div class="card-actions">
+            <a class="btn btn-small" href="{{ '/territory.html' | relative_url }}">Play</a>
+            <a class="btn btn-small btn-ghost" href="{{ '/territory.html' | relative_url }}">Details</a>
+          </div>
+        </article>
+
+        <article class="card card-soft">
+          <div class="card-top">
+            <h3>Next</h3>
+            <p class="muted">
+              Add more projects here: screenshots, a short tech stack line, and a GitHub link.
+            </p>
+          </div>
+          <div class="card-actions">
+            <span class="tag">HTML</span>
+            <span class="tag">JS</span>
+            <span class="tag">Physics</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="about" class="section">
+      <div class="section-head">
+        <h2>About</h2>
+        <p class="muted">Short and concrete.</p>
+      </div>
+      <div class="panel">
+        <p>
+          I build small, complete projects—clean UI, tight feedback loops, and systems that feel good to use.
+        </p>
+      </div>
+    </section>
+
+    <section id="links" class="section">
+      <div class="section-head">
+        <h2>Links</h2>
+        <p class="muted">Where to find me.</p>
+      </div>
+
+      <div class="grid two">
+        <a class="linkcard" href="https://github.com/tydoskus" target="_blank" rel="noreferrer">
+          <div>
+            <div class="linktitle">GitHub</div>
+            <div class="muted">github.com/tydoskus</div>
+          </div>
+          <div class="arrow">↗</div>
+        </a>
+
+        <a class="linkcard" href="mailto:you@email.com">
+          <div>
+            <div class="linktitle">Email</div>
+            <div class="muted">you@email.com</div>
+          </div>
+          <div class="arrow">↗</div>
+        </a>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="muted">© {{ site.time | date: "%Y" }} Ryan Guild</div>
+    </footer>
+  </main>
+</body>
+</html>
