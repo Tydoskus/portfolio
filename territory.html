@@ -262,6 +262,25 @@
   }
   .hint b{ color:var(--text); }
 
+  /* Send or defend troops button */
+  .chipbtn{
+    border:1px solid var(--line);
+    background: rgba(15,23,42,.03);
+    color: var(--text);
+    padding:6px 10px;
+    border-radius:999px;
+    font-weight:800;
+    font-size:12px;
+    cursor:pointer;
+    line-height:1;
+  }
+  .chipbtn:hover{ background: rgba(15,23,42,.06); }
+  .chipbtn:active{ transform: translateY(1px); }
+  .chipbtn:disabled{
+    opacity:.5;
+    cursor:not-allowed;
+  }
+
   @media (max-width: 980px){
     .wrap{ grid-template-columns: 1fr; }
     .left{ order:2; }
@@ -320,6 +339,7 @@
           <span class="badge"><span class="sw p2"></span>Red</span>
           <span class="badge"><span class="sw neu"></span>Neutral</span>
           <span class="badge" id="badgeSel">Selected: —</span>
+          <button id="btnAuto" class="chipbtn" title="Toggle selected node auto mode">Auto: —</button>
           <span class="badge" id="badgeMode">Mode: Click-to-send</span>
         </div>
         <div class="status">
@@ -364,6 +384,7 @@
         badgeMode: document.getElementById('badgeMode'),
         badgeWin: document.getElementById('badgeWin'),
         log: document.getElementById('log'),
+        btnAuto: document.getElementById('btnAuto'),
       };
 
       // --------- RNG (deterministic-ish if you want, currently seeded by time)
@@ -498,6 +519,8 @@
                 troops: 8 + rand()*18,
                 level: 1,
                 heldTime: 0,
+                auto: 'defend',   // 'defend' | 'send'
+                autoCd: 0,        // seconds until next auto action
                 links: []
               });
               break;
@@ -559,6 +582,7 @@
 
         logEvent(null, 'New map generated.');
         ui.badgeWin.textContent = '—';
+        refreshAutoUI();
       }
 
       function link(i,j){
@@ -1080,6 +1104,77 @@
         }
         const n = nodes[id];
         ui.badgeSel.textContent = `Selected: #${n.id} (${ownerName(n.owner)})`;
+        refreshAutoUI();
+      }
+
+      function refreshAutoUI(){
+        if (!ui.btnAuto) return;
+        if (selected < 0) {
+          ui.btnAuto.textContent = 'Auto: —';
+          ui.btnAuto.disabled = true;
+          return;
+        }
+        const n = nodes[selected];
+        const isPlayerNode = (n.owner === OWNER.P1);
+        ui.btnAuto.disabled = !isPlayerNode;
+        ui.btnAuto.textContent = `Auto: ${n.auto === 'send' ? 'Send' : 'Defend'}`;
+      }
+
+      function pickAutoTarget(fromId){
+        const from = nodes[fromId];
+      
+        // Prefer attacking non-player neighbors with lowest troops (weakest)
+        let best = -1;
+        let bestScore = 1e18;
+      
+        for (const j of from.links){
+          const t = nodes[j];
+      
+          // priority buckets: enemy (0), neutral (1), friendly (2)
+          const bucket =
+            (t.owner === OWNER.P2) ? 0 :
+            (t.owner === OWNER.NEU) ? 1 : 2;
+      
+          // lower troops => better target; add mild distance penalty
+          const d = dist(from.x, from.y, t.x, t.y);
+          const score = bucket * 1e6 + t.troops * 10 + d * 0.5;
+      
+          if (score < bestScore){
+            bestScore = score;
+            best = j;
+          }
+        }
+        return best;
+      }
+      
+      function updateAuto(dt){
+        for (const n of nodes){
+          if (n.owner !== OWNER.P1) continue;
+          if (n.auto !== 'send') continue;
+      
+          n.autoCd -= dt;
+          if (n.autoCd > 0) continue;
+      
+          // Only send if we have enough to matter
+          const total = Math.floor(n.troops);
+          if (total < 18){
+            n.autoCd = 0.6; // recheck soon
+            continue;
+          }
+      
+          const target = pickAutoTarget(n.id);
+          if (target === -1){
+            n.autoCd = 1.0;
+            continue;
+          }
+      
+          // Send a stable fraction; hold a little back
+          const frac = 0.35; // tweak as desired
+          const sent = sendTroops(n.id, target, frac, false);
+      
+          // cadence
+          n.autoCd = sent ? (1.2 + rand()*0.9) : 0.8;
+        }
       }
 
       // Click-to-send or drag-to-send
@@ -1171,6 +1266,18 @@
         ui.speedPill.textContent = timeScale.toFixed(2) + '×';
       });
 
+      ui.btnAuto.addEventListener('click', () => {
+        if (selected < 0) return;
+        const n = nodes[selected];
+        if (n.owner !== OWNER.P1) return;
+      
+        n.auto = (n.auto === 'send') ? 'defend' : 'send';
+        n.autoCd = 0; // act immediately on next tick if set to send
+        refreshAutoUI();
+        logEvent(OWNER.P1, `Territory #${n.id} set to ${n.auto.toUpperCase()}.`);
+      });
+
+
       window.addEventListener('resize', () => resize());
 
       // --------- Main loop
@@ -1183,6 +1290,7 @@
         if (!paused){
           updateEconomy(dt);
           updateMarches(dt);
+          updateAuto(dt);
           aiThink(dt);
           computeStats();
         }
