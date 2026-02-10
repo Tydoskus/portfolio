@@ -405,9 +405,9 @@
         <div class="row"><span>Neutral troops</span><b id="statNeu">—</b></div>
         <div class="row"><span>Income (Blue)</span><b id="statInc1">—</b></div>
         <div class="row"><span>Income (Red)</span><b id="statInc2">—</b></div>
-        <div class="row"><span>Wave enemy income</span><b id="statEnemyInc">—</b></div>
-        <div class="row"><span>Wave enemy start troops</span><b id="statEnemyStart">—</b></div>
-        <div class="row"><span>Wave AI pressure</span><b id="statEnemyAI">—</b></div>
+        <div class="row"><span>Enemy income bonus</span><b id="statEnemyInc">—</b></div>
+        <div class="row"><span>Enemy start troops bonus</span><b id="statEnemyStart">—</b></div>
+        <div class="row"><span>Enemy AI think rate</span><b id="statEnemyAI">—</b></div>
       </div>
 
       <div class="log" id="log">
@@ -628,11 +628,12 @@
 		
 		function refreshWaveStats(){
 		  const scale = run.scale || waveScale(meta.wave);
-		  ui.statEnemyInc.textContent = `${scale.redGenMult.toFixed(2)}×`;
-		  ui.statEnemyStart.textContent = `${scale.redStartTroopsMult.toFixed(2)}×`;
-		  const baseThink = Math.max(0.01, AI.thinkEvery);
-		  const pressure = (baseThink / Math.max(0.01, scale.aiThinkEvery)) * scale.aiSafeMarginMult;
-		  ui.statEnemyAI.textContent = `${pressure.toFixed(2)}×`;
+		  const incBonusPct = (scale.redGenMult - 1) * 100;
+		  const startBonusPct = (scale.redStartTroopsMult - 1) * 100;
+		  const thinkRate = 1 / Math.max(0.01, scale.aiThinkEvery);
+		  ui.statEnemyInc.textContent = `+${incBonusPct.toFixed(0)}%`;
+		  ui.statEnemyStart.textContent = `+${startBonusPct.toFixed(0)}%`;
+		  ui.statEnemyAI.textContent = `${thinkRate.toFixed(2)}/s`;
 		}
 
 		function refreshMetaUI(){
@@ -1227,10 +1228,10 @@
         ui.statInc2.textContent = inc2.toFixed(2) + '/s';
 
         // win banner
-        if (p1Terr === nodes.length){
+        if (p2Terr === 0){
           ui.badgeWin.textContent = 'Blue wins';
           ui.badgeWin.style.borderColor = COLORS.p1;
-        } else if (p2Terr === nodes.length){
+        } else if (p1Terr === 0){
           ui.badgeWin.textContent = 'Red wins';
           ui.badgeWin.style.borderColor = COLORS.p2;
         } else {
@@ -1239,8 +1240,8 @@
         }
 		  // run end detection (one-shot)
 		if (!run.ended){
-		  if (p1Terr === nodes.length) endRun('win');
-		  else if (p2Terr === nodes.length) endRun('loss');
+		  if (p2Terr === 0) endRun('win');
+		  else if (p1Terr === 0) endRun('loss');
 		}
       }
 
