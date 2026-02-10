@@ -405,6 +405,9 @@
         <div class="row"><span>Neutral troops</span><b id="statNeu">—</b></div>
         <div class="row"><span>Income (Blue)</span><b id="statInc1">—</b></div>
         <div class="row"><span>Income (Red)</span><b id="statInc2">—</b></div>
+        <div class="row"><span>Enemy income bonus</span><b id="statEnemyInc">—</b></div>
+        <div class="row"><span>Enemy start troops bonus</span><b id="statEnemyStart">—</b></div>
+        <div class="row"><span>Enemy AI think rate</span><b id="statEnemyAI">—</b></div>
       </div>
 
       <div class="log" id="log">
@@ -425,7 +428,7 @@
         <div class="status">
 		  <span class="badge" id="badgeWave">Wave: 1</span>
 		  <span class="badge" id="badgeCredits">Credits: 0</span>
-		  <button id="btnRepeat" class="chipbtn" title="Replay this wave">Repeat</button>
+		  <button id="btnPrev" class="chipbtn" title="Go to previous wave">Prev</button>
 		  <button id="btnNext" class="chipbtn" title="Advance to next wave">Next</button>
 		  <button id="btnUpg" class="chipbtn" title="Upgrades">Upgrades</button>
 		  <span class="badge" id="badgeWin">—</span>
@@ -480,6 +483,9 @@
         statNeu: document.getElementById('statNeu'),
         statInc1: document.getElementById('statInc1'),
         statInc2: document.getElementById('statInc2'),
+        statEnemyInc: document.getElementById('statEnemyInc'),
+        statEnemyStart: document.getElementById('statEnemyStart'),
+        statEnemyAI: document.getElementById('statEnemyAI'),
         badgeSel: document.getElementById('badgeSel'),
         badgeMode: document.getElementById('badgeMode'),
         badgeWin: document.getElementById('badgeWin'),
@@ -487,7 +493,7 @@
         btnAuto: document.getElementById('btnAuto'),
 		badgeWave: document.getElementById('badgeWave'),
 		badgeCredits: document.getElementById('badgeCredits'),
-		btnRepeat: document.getElementById('btnRepeat'),
+		btnPrev: document.getElementById('btnPrev'),
 		btnNext: document.getElementById('btnNext'),
 		btnUpg: document.getElementById('btnUpg'),
 		upgModal: document.getElementById('upgModal'),
@@ -536,25 +542,25 @@
 		  income: {
 		    name: 'Blue Income',
 		    desc: '+10% troop generation per level (Blue only).',
-		    baseCost: 25, costMult: 1.6,
+		    baseCost: 25, costMult: 1.42,
 		    effect: lvl => 1 + 0.10*lvl,
 		  },
 		  speed: {
 		    name: 'March Speed',
 		    desc: '+8% march speed per level (Blue marches only).',
-		    baseCost: 35, costMult: 1.7,
+		    baseCost: 35, costMult: 1.48,
 		    effect: lvl => 1 + 0.08*lvl,
 		  },
 		  defense: {
 		    name: 'Blue Defense',
 		    desc: '+0.02 defender advantage per level (Blue-held nodes).',
-		    baseCost: 45, costMult: 1.8,
+		    baseCost: 45, costMult: 1.54,
 		    effect: lvl => 0.02*lvl,
 		  },
 		  start: {
 		    name: 'Start Troops',
 		    desc: '+6 starting troops per level on your first territory.',
-		    baseCost: 40, costMult: 1.75,
+		    baseCost: 40, costMult: 1.5,
 		    effect: lvl => 6*lvl,
 		  },
 		};
@@ -620,9 +626,21 @@
 		  }
 		}
 		
+		function refreshWaveStats(){
+		  const scale = run.scale || waveScale(meta.wave);
+		  const incBonusPct = (scale.redGenMult - 1) * 100;
+		  const startBonusPct = (scale.redStartTroopsMult - 1) * 100;
+		  const thinkRate = 1 / Math.max(0.01, scale.aiThinkEvery);
+		  ui.statEnemyInc.textContent = `+${incBonusPct.toFixed(0)}%`;
+		  ui.statEnemyStart.textContent = `+${startBonusPct.toFixed(0)}%`;
+		  ui.statEnemyAI.textContent = `${thinkRate.toFixed(2)}/s`;
+		}
+
 		function refreshMetaUI(){
 		  ui.badgeWave.textContent = `Wave: ${meta.wave}`;
 		  ui.badgeCredits.textContent = `Credits: ${fmt(meta.credits)}`;
+		  if (ui.btnPrev) ui.btnPrev.disabled = meta.wave <= 1;
+		  refreshWaveStats();
 		}
 		
 		// ---------- Run state
@@ -667,6 +685,7 @@
 		  rand = mulberry32(run.seed);
 		  newGame();              // uses current rand
 		  refreshMetaUI();
+		  refreshWaveStats();
 		  computeStats();
 		}
 		
@@ -1209,10 +1228,10 @@
         ui.statInc2.textContent = inc2.toFixed(2) + '/s';
 
         // win banner
-        if (p1Terr === nodes.length){
+        if (p2Terr === 0){
           ui.badgeWin.textContent = 'Blue wins';
           ui.badgeWin.style.borderColor = COLORS.p1;
-        } else if (p2Terr === nodes.length){
+        } else if (p1Terr === 0){
           ui.badgeWin.textContent = 'Red wins';
           ui.badgeWin.style.borderColor = COLORS.p2;
         } else {
@@ -1221,8 +1240,8 @@
         }
 		  // run end detection (one-shot)
 		if (!run.ended){
-		  if (p1Terr === nodes.length) endRun('win');
-		  else if (p2Terr === nodes.length) endRun('loss');
+		  if (p2Terr === 0) endRun('win');
+		  else if (p1Terr === 0) endRun('loss');
 		}
       }
 
@@ -1702,10 +1721,12 @@
 		  if (e.target === ui.upgModal) ui.upgModal.classList.add('hidden');
 		});
 		
-		ui.btnRepeat.addEventListener('click', () => {
-		  // repeat same wave, new random map
+		ui.btnPrev.addEventListener('click', () => {
+		  if (meta.wave <= 1) return;
+		  meta.wave--;
+		  saveMeta();
 		  startRun({ wave: meta.wave, seed: (Date.now() ^ (Math.random()*1e9)) >>> 0 });
-		  logEvent(null, `Repeated wave ${meta.wave}.`);
+		  logEvent(null, `Started wave ${meta.wave}.`);
 		});
 		
 		ui.btnNext.addEventListener('click', () => {
