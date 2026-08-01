@@ -470,13 +470,23 @@
   };
 
   const REWARD_DATA = {
-    damage: { color: "#ff655a", label: "+3 DAMAGE" },
+    damage: { color: "#ff655a" },
     health: { color: "#66ed79", label: "+6 MAX HEALTH" },
     speed:  { color: "#ffe05d", label: "+8% ATT SPEED" },
-    range:  { color: "#67adff", label: "+14 ATT LENGTH" },
+    range:  { color: "#67adff", label: "+14 ATT RANGE" },
     armor:  { color: "#d3dbe0", label: "+1 ARMOR" },
     regen:  { color: "#ff7ccb", label: "+0.3 HP/SEC" }
   };
+
+  function damageRewardForHp(maxHp) {
+    return Math.max(1, Math.floor(maxHp / 12));
+  }
+
+  function rewardLabel(type, maxHp) {
+    return type === "damage"
+      ? `+${damageRewardForHp(maxHp)} DAMAGE`
+      : REWARD_DATA[type].label;
+  }
 
   const CAMPS = [
     {
@@ -844,10 +854,10 @@
     }
   }
 
-  function applyReward(type, x, y) {
+  function applyReward(type, x, y, enemyMaxHp) {
     switch (type) {
       case "damage":
-        player.damage += 3;
+        player.damage += damageRewardForHp(enemyMaxHp);
         break;
       case "health":
         player.maxHp += 6;
@@ -869,7 +879,7 @@
     }
 
     const data = REWARD_DATA[type];
-    logPickup(data.label, data.color);
+    logPickup(rewardLabel(type, enemyMaxHp), data.color);
     spawnBurst(x, y, data.color, 16, 110);
     score += 20;
   }
@@ -888,7 +898,7 @@
       site.respawnAt = gameTime + 30;
     }
 
-    applyReward(e.rewardType, e.x, e.y);
+    applyReward(e.rewardType, e.x, e.y, e.maxHp);
     spawnBurst(e.x, e.y, base.color, e.type === "elite" ? 28 : 12, e.type === "elite" ? 150 : 90);
     screenShake = Math.max(screenShake, e.type === "elite" ? 10 : 3);
   }
@@ -1368,9 +1378,10 @@
     ctx.lineWidth = 3;
     ctx.strokeStyle = "rgba(0,0,0,.92)";
 
-    ctx.strokeText(reward.label, x, rewardY);
+    const label = rewardLabel(e.rewardType, e.maxHp);
+    ctx.strokeText(label, x, rewardY);
     ctx.fillStyle = reward.color;
-    ctx.fillText(reward.label, x, rewardY);
+    ctx.fillText(label, x, rewardY);
 
     const hpLabel = `${Math.max(0, Math.ceil(e.hp))}/${Math.ceil(e.maxHp)} HP`;
     ctx.strokeText(hpLabel, x, healthY);
