@@ -435,37 +435,37 @@
       name: "Bramble",
       hp: 12, speed: 58, damage: 4, r: 14,
       color: "#d95738", outline: "#5c1b13", reward: 4,
-      aggro: 245, leash: 390
+      aggro: 245
     },
     runner: {
       name: "Needle",
       hp: 9, speed: 102, damage: 4, r: 10,
       color: "#ffd34d", outline: "#6f4a12", reward: 5,
-      aggro: 275, leash: 430
+      aggro: 275
     },
     tank: {
       name: "Mossback",
       hp: 38, speed: 34, damage: 9, r: 22,
       color: "#768d51", outline: "#2c3b20", reward: 10,
-      aggro: 220, leash: 370
+      aggro: 220
     },
     shooter: {
       name: "Spitter",
       hp: 18, speed: 43, damage: 4, r: 15,
       color: "#b16ac8", outline: "#4b235d", reward: 8,
-      ranged: true, aggro: 330, leash: 470
+      ranged: true, aggro: 330
     },
     splitter: {
       name: "Brood",
       hp: 22, speed: 52, damage: 6, r: 16,
       color: "#45b6c2", outline: "#174a54", reward: 8,
-      aggro: 255, leash: 405
+      aggro: 255
     },
     elite: {
       name: "Ironhorn",
       hp: 92, speed: 46, damage: 13, r: 27,
       color: "#d47a2b", outline: "#5c2b12", reward: 30,
-      elite: true, aggro: 300, leash: 500
+      elite: true, aggro: 300
     }
   };
 
@@ -482,7 +482,7 @@
     {
       name: "Ember Fen",
       x: 820, y: 900, minRadius: 260, radius: 610,
-      tier: 0, count: 6,
+      count: 6,
       types: ["grunt", "grunt", "runner"],
       rewards: ["damage", "health", "speed"],
       ground: "#5b3b28", ring: "#b66a37"
@@ -490,7 +490,7 @@
     {
       name: "Mossfall Ruins",
       x: 2400, y: 760, minRadius: 260, radius: 630,
-      tier: 1, count: 6,
+      count: 6,
       types: ["grunt", "tank", "tank"],
       rewards: ["armor", "health", "damage"],
       ground: "#33423a", ring: "#8d9b75"
@@ -498,7 +498,7 @@
     {
       name: "Glass Thicket",
       x: 3970, y: 1120, minRadius: 280, radius: 600,
-      tier: 1, count: 5,
+      count: 5,
       types: ["runner", "runner", "splitter"],
       rewards: ["speed", "range", "damage"],
       ground: "#244f53", ring: "#64bdc5"
@@ -506,7 +506,7 @@
     {
       name: "Brine Marsh",
       x: 850, y: 2860, minRadius: 270, radius: 620,
-      tier: 2, count: 6,
+      count: 6,
       types: ["shooter", "splitter", "shooter"],
       rewards: ["regen", "range", "health"],
       ground: "#243e4d", ring: "#5f9eb5"
@@ -514,7 +514,7 @@
     {
       name: "Cinder Quarry",
       x: 3830, y: 2790, minRadius: 280, radius: 610,
-      tier: 2, count: 6,
+      count: 6,
       types: ["tank", "shooter", "tank"],
       rewards: ["armor", "damage", "regen"],
       ground: "#4b4039", ring: "#b5875c"
@@ -522,7 +522,7 @@
     {
       name: "Moonroot Grove",
       x: 1540, y: 4040, minRadius: 240, radius: 560,
-      tier: 3, count: 5,
+      count: 5,
       types: ["splitter", "tank", "elite"],
       rewards: ["regen", "armor", "damage", "health"],
       ground: "#3d3157", ring: "#9a79d5"
@@ -530,7 +530,7 @@
     {
       name: "Sunken Yard",
       x: 3590, y: 4100, minRadius: 240, radius: 560,
-      tier: 3, count: 5,
+      count: 5,
       types: ["runner", "shooter", "elite"],
       rewards: ["speed", "range", "regen", "damage"],
       ground: "#553334", ring: "#d37362"
@@ -669,7 +669,6 @@
           id: id++,
           x, y,
           campName: camp.name,
-          tier: camp.tier,
           type: camp.types[i % camp.types.length],
           rewardType: camp.rewards[(i * 2 + campIndex) % camp.rewards.length],
           alive: false,
@@ -954,10 +953,8 @@
       const toPlayerX = player.x - e.x;
       const toPlayerY = player.y - e.y;
       const playerDistance = Math.hypot(toPlayerX, toPlayerY) || 1;
-      const playerFromHome = Math.hypot(player.x - e.homeX, player.y - e.homeY);
 
       if (playerDistance < e.aggroRadius) e.engaged = true;
-      if (playerFromHome > e.leash) e.engaged = false;
 
       let targetX;
       let targetY;
@@ -1169,28 +1166,6 @@
         ctx.fillStyle = "rgba(0,0,0,.08)";
         ctx.fillRect(Math.floor(x - camera.x + (n*7)%26), Math.floor(y - camera.y + (n*11)%26), 3, 3);
       }
-    }
-
-    // Each camp has its own visible biome boundary and ground tint.
-    for (const camp of CAMPS) {
-      const x = Math.floor(camp.x - camera.x);
-      const y = Math.floor(camp.y - camera.y);
-      if (x + camp.radius < -30 || y + camp.radius < -30 || x - camp.radius > viewW + 30 || y - camp.radius > viewH + 30) continue;
-
-      ctx.save();
-      ctx.globalAlpha = .34;
-      ctx.fillStyle = camp.ground;
-      ctx.beginPath();
-      ctx.arc(x, y, camp.radius + 55, 0, TAU);
-      ctx.fill();
-      ctx.globalAlpha = .7;
-      ctx.strokeStyle = camp.ring;
-      ctx.lineWidth = 7;
-      ctx.setLineDash([14, 18]);
-      ctx.beginPath();
-      ctx.arc(x, y, camp.radius + 20, 0, TAU);
-      ctx.stroke();
-      ctx.restore();
     }
 
     for (const p of paths) {
