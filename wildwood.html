@@ -489,6 +489,50 @@
     return dist2(a, b) < rr * rr;
   }
 
+  function raycastProjectile(startX, startY, endX, endY, radius) {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const lengthSq = dx * dx + dy * dy;
+    if (lengthSq === 0) return null;
+
+    const invLength = 1 / Math.sqrt(lengthSq);
+    let closestEnemy = null;
+    let closestT = Infinity;
+
+    for (const e of enemies) {
+      if (e.dead) continue;
+
+      const ex = e.x - startX;
+      const ey = e.y - startY;
+      const hitRadius = radius + e.r;
+      const hitRadiusSq = hitRadius * hitRadius;
+      const startDistanceSq = ex * ex + ey * ey;
+      let t = 0;
+
+      if (startDistanceSq > hitRadiusSq) {
+        const projectedT = (ex * dx + ey * dy) / lengthSq;
+        if (projectedT < 0 || projectedT > 1) continue;
+
+        const nearestX = startX + dx * projectedT;
+        const nearestY = startY + dy * projectedT;
+        const nearestDistanceX = e.x - nearestX;
+        const nearestDistanceY = e.y - nearestY;
+        const nearestDistanceSq = nearestDistanceX * nearestDistanceX + nearestDistanceY * nearestDistanceY;
+        if (nearestDistanceSq > hitRadiusSq) continue;
+
+        t = projectedT - Math.sqrt(hitRadiusSq - nearestDistanceSq) * invLength;
+        if (t < 0 || t > 1) continue;
+      }
+
+      if (t < closestT) {
+        closestT = t;
+        closestEnemy = e;
+      }
+    }
+
+    return closestEnemy ? { enemy: closestEnemy, t: closestT } : null;
+  }
+
   function makeWorld() {
     decor.length = 0;
     paths.length = 0;
@@ -924,10 +968,32 @@
 
   function updateProjectiles(dt) {
     for (const p of projectiles) {
+      const travelTime = Math.min(dt, p.life);
+      const startX = p.x;
+      const startY = p.y;
+      const endX = startX + p.vx * travelTime;
+      const endY = startY + p.vy * travelTime;
+      const hit = raycastProjectile(startX, startY, endX, endY, p.r);
+
       p.life -= dt;
       p.trail -= dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
+
+      if (hit) {
+        p.x = startX + (endX - startX) * hit.t;
+        p.y = startY + (endY - startY) * hit.t;
+        hit.enemy.hp -= p.damage;
+        hit.enemy.hurt = .12;
+        p.life = 0;
+
+        const ang = Math.atan2(p.vy, p.vx);
+        hit.enemy.vx += Math.cos(ang) * 90;
+        hit.enemy.vy += Math.sin(ang) * 90;
+        spawnBurst(p.x, p.y, "#fff0a1", 5, 52);
+        if (hit.enemy.hp <= 0) killEnemy(hit.enemy);
+      } else {
+        p.x = endX;
+        p.y = endY;
+      }
 
       if (p.trail <= 0) {
         p.trail = .035;
@@ -935,21 +1001,6 @@
           x: p.x, y: p.y, vx: 0, vy: 0,
           life: .16, maxLife: .16, size: 3, color: "#ffd957"
         });
-      }
-
-      for (const e of enemies) {
-        if (e.dead) continue;
-        if (circleHit(p, e)) {
-          e.hp -= p.damage;
-          e.hurt = .12;
-          p.life = 0;
-          const ang = Math.atan2(p.vy, p.vx);
-          e.vx += Math.cos(ang) * 90;
-          e.vy += Math.sin(ang) * 90;
-          spawnBurst(p.x, p.y, "#fff0a1", 5, 52);
-          if (e.hp <= 0) killEnemy(e);
-          break;
-        }
       }
     }
 
