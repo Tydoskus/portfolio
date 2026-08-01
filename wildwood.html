@@ -393,6 +393,7 @@
   let viewW = innerWidth;
   let viewH = innerHeight;
   let running = false;
+  let hasStarted = false;
   let gameTime = 0;
   let last = performance.now();
   let kills = 0;
@@ -406,6 +407,8 @@
 
   const BASE_PROJECTILE_SPEED = 390;
   const MAX_PROJECTILE_SPEED = BASE_PROJECTILE_SPEED * 7;
+  const ENEMY_SPEED_MULTIPLIER = 2;
+  const RANGED_PROJECTILE_SPEED = 165 * 1.5;
   const PLAYER_SPRITE_X_OFFSETS = [
     [-7, -3, 1, 5],
     [-7, -3, -1, 4],
@@ -721,19 +724,23 @@
     }
   }
 
-  function reset() {
+  function reset(preserveStats = false) {
     player.x = WORLD.w / 2;
     player.y = WORLD.h / 2;
-    player.hp = 30;
-    player.maxHp = 30;
-    player.damage = 4;
-    player.attackRate = 0.78;
-    player.projectileSpeed = BASE_PROJECTILE_SPEED;
-    player.projectileCount = 1;
-    player.attackRange = 155;
-    player.armor = 0;
-    player.regen = 0;
-    player.speed = 175;
+
+    if (!preserveStats) {
+      player.maxHp = 30;
+      player.damage = 4;
+      player.attackRate = 0.78;
+      player.projectileSpeed = BASE_PROJECTILE_SPEED;
+      player.projectileCount = 1;
+      player.attackRange = 155;
+      player.armor = 0;
+      player.regen = 0;
+      player.speed = 175;
+    }
+
+    player.hp = player.maxHp;
     player.attackClock = 0;
     player.hurtClock = 0;
     player.facing = 0;
@@ -797,7 +804,7 @@
       r: base.r,
       hp: maxHp,
       maxHp,
-      speed: base.speed,
+      speed: base.speed * ENEMY_SPEED_MULTIPLIER,
       damage: base.damage,
       reward: base.reward,
       aggroRadius: base.aggro,
@@ -1171,8 +1178,8 @@
           enemyShots.push({
             x: e.x,
             y: e.y,
-            vx: toPlayerX / playerDistance * 165,
-            vy: toPlayerY / playerDistance * 165,
+            vx: toPlayerX / playerDistance * RANGED_PROJECTILE_SPEED,
+            vy: toPlayerY / playerDistance * RANGED_PROJECTILE_SPEED,
             r: 6,
             damage: e.damage,
             life: 4
@@ -1777,7 +1784,8 @@
   }
 
   function startGame() {
-    reset();
+    reset(hasStarted);
+    hasStarted = true;
     running = true;
     last = performance.now();
     startEl.style.display = "none";
