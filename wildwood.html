@@ -717,7 +717,6 @@
     const dx = target.x - player.x;
     const dy = target.y - player.y;
     const d = Math.hypot(dx, dy) || 1;
-    player.facing = Math.atan2(dy, dx);
 
     projectiles.push({
       x: player.x + dx / d * 20,
