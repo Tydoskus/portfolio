@@ -72,10 +72,65 @@
     line-height: 1.45;
   }
 
-  #status {
-    text-align: right;
-    min-width: 140px;
-    font-size: 13px;
+  .settings-wrap {
+    position: relative;
+    pointer-events: auto;
+  }
+
+  .settings-button {
+    width: 42px;
+    height: 42px;
+    margin: 0;
+    padding: 0;
+    border: 2px solid rgba(255,255,255,.24);
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: 0 4px 0 rgba(0,0,0,.30);
+    color: var(--text);
+    font: 900 24px/1 ui-monospace, monospace;
+    text-shadow: 0 2px 0 #000;
+  }
+
+  .settings-panel {
+    position: absolute;
+    top: 50px;
+    right: 0;
+    width: 220px;
+    padding: 10px;
+    pointer-events: auto;
+  }
+
+  .settings-panel[hidden] { display: none; }
+
+  .settings-title {
+    margin-bottom: 8px;
+    color: var(--gold);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .08em;
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+  }
+
+  .setting-toggle {
+    min-width: 58px;
+    margin: 0;
+    padding: 6px 8px;
+    border-width: 2px;
+    border-radius: 6px;
+    box-shadow: 0 3px 0 #123e18;
+    font-size: 12px;
+  }
+
+  .setting-toggle.is-off {
+    background: linear-gradient(#8c5555, #683334);
+    box-shadow: 0 3px 0 #3d1515;
   }
 
   .bar {
@@ -260,7 +315,16 @@
       </div>
       <div id="stats"></div>
     </div>
-    <div id="status" class="card"></div>
+    <div class="settings-wrap">
+      <button id="settingsBtn" class="settings-button" type="button" aria-label="Open settings" aria-expanded="false">⚙</button>
+      <div id="settingsPanel" class="settings-panel card" hidden>
+        <div class="settings-title">SETTINGS</div>
+        <div class="setting-row">
+          <span>SCREEN SHAKE</span>
+          <button id="screenShakeToggle" class="setting-toggle" type="button" aria-pressed="true">ON</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div id="message"></div>
   <div id="pickupLog"></div>
@@ -296,7 +360,9 @@
   const hpFill = document.getElementById("hpFill");
   const hpText = document.getElementById("hpText");
   const statsEl = document.getElementById("stats");
-  const statusEl = document.getElementById("status");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsPanel = document.getElementById("settingsPanel");
+  const screenShakeToggle = document.getElementById("screenShakeToggle");
   const messageEl = document.getElementById("message");
   const pickupLog = document.getElementById("pickupLog");
   const startEl = document.getElementById("start");
@@ -327,6 +393,7 @@
   let score = 0;
   let flash = 0;
   let screenShake = 0;
+  let screenShakeEnabled = true;
   let messageClock = 0;
 
   const touchMove = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
@@ -1375,8 +1442,8 @@
   function render() {
     ctx.save();
 
-    const sx = screenShake > .2 ? rand(-screenShake, screenShake) : 0;
-    const sy = screenShake > .2 ? rand(-screenShake, screenShake) : 0;
+    const sx = screenShakeEnabled && screenShake > .2 ? rand(-screenShake, screenShake) : 0;
+    const sy = screenShakeEnabled && screenShake > .2 ? rand(-screenShake, screenShake) : 0;
     ctx.translate(sx, sy);
 
     drawGround();
@@ -1405,23 +1472,6 @@
     ctx.restore();
   }
 
-  function currentAreaName() {
-    let closest = CAMPS[0];
-    let best = Infinity;
-
-    for (const camp of CAMPS) {
-      const dx = player.x - camp.x;
-      const dy = player.y - camp.y;
-      const d = dx * dx + dy * dy;
-      if (d < best) {
-        best = d;
-        closest = camp;
-      }
-    }
-
-    return closest.name.toUpperCase();
-  }
-
   function updateHud() {
     const hpRatio = clamp(player.hp / player.maxHp, 0, 1);
     hpFill.style.width = (hpRatio * 100).toFixed(1) + "%";
@@ -1431,27 +1481,6 @@
       `DMG ${player.damage.toFixed(0)} &nbsp; ARM ${player.armor}<br>` +
       `ATK SPEED ${(1/player.attackRate).toFixed(2)}/s &nbsp; ATK RANGE ${Math.round(player.attackRange)}<br>` +
       `REGEN ${player.regen.toFixed(1)}/s`;
-
-    const mins = Math.floor(gameTime / 60);
-    const secs = Math.floor(gameTime % 60).toString().padStart(2, "0");
-
-    let nextRespawn = Infinity;
-    for (const site of spawnSites) {
-      if (!site.alive && site.respawnAt > gameTime) {
-        nextRespawn = Math.min(nextRespawn, site.respawnAt - gameTime);
-      }
-    }
-
-    const respawnText = Number.isFinite(nextRespawn)
-      ? `RESPAWN ${Math.ceil(nextRespawn)}s`
-      : "ALL ACTIVE";
-
-    statusEl.innerHTML =
-      `${currentAreaName()}<br>` +
-      `${mins}:${secs}<br>` +
-      `ALIVE ${enemies.length}/${spawnSites.length}<br>` +
-      `${respawnText}<br>` +
-      `KILLS ${kills}`;
   }
 
   function loop(now) {
@@ -1477,6 +1506,24 @@
     finalScore.textContent = `Survived ${Math.floor(gameTime / 60)}:${Math.floor(gameTime % 60).toString().padStart(2,"0")} · ${kills} kills · score ${score}`;
     overEl.style.display = "grid";
   }
+
+  function updateScreenShakeSetting() {
+    screenShakeToggle.textContent = screenShakeEnabled ? "ON" : "OFF";
+    screenShakeToggle.setAttribute("aria-pressed", String(screenShakeEnabled));
+    screenShakeToggle.classList.toggle("is-off", !screenShakeEnabled);
+  }
+
+  settingsBtn.addEventListener("click", () => {
+    const opening = settingsPanel.hidden;
+    settingsPanel.hidden = !opening;
+    settingsBtn.setAttribute("aria-expanded", String(opening));
+  });
+
+  screenShakeToggle.addEventListener("click", () => {
+    screenShakeEnabled = !screenShakeEnabled;
+    if (!screenShakeEnabled) screenShake = 0;
+    updateScreenShakeSetting();
+  });
 
   document.getElementById("playBtn").addEventListener("click", startGame);
   document.getElementById("restartBtn").addEventListener("click", startGame);
