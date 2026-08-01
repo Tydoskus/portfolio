@@ -349,6 +349,7 @@
     maxHp: 30,
     damage: 4,
     attackRate: 0.78,
+    projectileSpeed: 390,
     attackRange: 155,
     armor: 0,
     regen: 0,
@@ -557,6 +558,7 @@
     player.maxHp = 30;
     player.damage = 4;
     player.attackRate = 0.78;
+    player.projectileSpeed = 390;
     player.attackRange = 155;
     player.armor = 0;
     player.regen = 0;
@@ -673,11 +675,11 @@
     projectiles.push({
       x: player.x + dx / d * 20,
       y: player.y + dy / d * 20,
-      vx: dx / d * 390,
-      vy: dy / d * 390,
+      vx: dx / d * player.projectileSpeed,
+      vy: dy / d * player.projectileSpeed,
       r: 6,
       damage: player.damage,
-      life: Math.max(.35, player.attackRange / 390),
+      life: player.attackRange / player.projectileSpeed,
       trail: 0
     });
 
@@ -719,6 +721,7 @@
         break;
       case "speed":
         player.attackRate = Math.max(.16, player.attackRate * .92);
+        player.projectileSpeed *= 1.08;
         break;
       case "range":
         player.attackRange += 14;
