@@ -1520,7 +1520,7 @@
       ctx.arc(x, y, strike.r, 0, TAU);
       ctx.stroke();
       ctx.fillStyle = "#ff5b36";
-      pixelCircle(fallY === y ? x : x, fallY, 9);
+      pixelCircle(x, fallY, 9);
       ctx.fillStyle = "#ffd05c";
       pixelCircle(x, fallY, 5);
       ctx.restore();
