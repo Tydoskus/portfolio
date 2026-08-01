@@ -606,12 +606,8 @@
   function spawnFromSite(site) {
     const base = ENEMY_TYPES[site.type];
 
-    // Smoothly scales with both map difficulty and the player's accumulated power.
-    const healthScale = 1 + site.tier * .34 + player.upgrades * .022;
-    const damageScale = 1 + site.tier * .22 + player.upgrades * .012;
-    const speedScale = 1 + site.tier * .035 + Math.min(.18, player.upgrades * .0025);
-
-    const maxHp = Math.max(1, Math.round(base.hp * healthScale));
+    // Enemy stats stay fixed by enemy type.
+    const maxHp = base.hp;
 
     enemies.push({
       type: site.type,
@@ -627,9 +623,9 @@
       r: base.r,
       hp: maxHp,
       maxHp,
-      speed: base.speed * speedScale,
-      damage: base.damage * damageScale,
-      reward: Math.round(base.reward * (1 + site.tier * .25)),
+      speed: base.speed,
+      damage: base.damage,
+      reward: base.reward,
       aggroRadius: base.aggro,
       leash: base.leash,
       engaged: false,
