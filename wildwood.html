@@ -372,7 +372,8 @@
   const stickEl = document.getElementById("stick");
 
   const TAU = Math.PI * 2;
-  const WORLD = { w: 2200, h: 2200 };
+  const WORLD = { w: 4800, h: 4800 };
+  const ENEMY_RESPAWN_SAFE_DISTANCE = 420;
   const keys = new Set();
   const camera = { x: 0, y: 0 };
   const particles = [];
@@ -479,53 +480,60 @@
 
   const CAMPS = [
     {
-      name: "Greenheart",
-      x: 1100, y: 1100, minRadius: 220, radius: 390,
-      tier: 0, count: 12,
+      name: "Ember Fen",
+      x: 820, y: 900, minRadius: 260, radius: 610,
+      tier: 0, count: 6,
       types: ["grunt", "grunt", "runner"],
-      rewards: ["damage", "health", "speed"]
+      rewards: ["damage", "health", "speed"],
+      ground: "#5b3b28", ring: "#b66a37"
     },
     {
-      name: "West Ruins",
-      x: 390, y: 1110, minRadius: 75, radius: 285,
-      tier: 1, count: 10,
+      name: "Mossfall Ruins",
+      x: 2400, y: 760, minRadius: 260, radius: 630,
+      tier: 1, count: 6,
       types: ["grunt", "tank", "tank"],
-      rewards: ["armor", "health", "damage"]
+      rewards: ["armor", "health", "damage"],
+      ground: "#33423a", ring: "#8d9b75"
     },
     {
-      name: "East Thicket",
-      x: 1810, y: 1090, minRadius: 75, radius: 285,
-      tier: 1, count: 10,
+      name: "Glass Thicket",
+      x: 3970, y: 1120, minRadius: 280, radius: 600,
+      tier: 1, count: 5,
       types: ["runner", "runner", "splitter"],
-      rewards: ["speed", "range", "damage"]
+      rewards: ["speed", "range", "damage"],
+      ground: "#244f53", ring: "#64bdc5"
     },
     {
-      name: "North Marsh",
-      x: 1100, y: 350, minRadius: 80, radius: 285,
-      tier: 2, count: 10,
+      name: "Brine Marsh",
+      x: 850, y: 2860, minRadius: 270, radius: 620,
+      tier: 2, count: 6,
       types: ["shooter", "splitter", "shooter"],
-      rewards: ["regen", "range", "health"]
+      rewards: ["regen", "range", "health"],
+      ground: "#243e4d", ring: "#5f9eb5"
     },
     {
-      name: "South Quarry",
-      x: 1100, y: 1850, minRadius: 80, radius: 285,
-      tier: 2, count: 10,
+      name: "Cinder Quarry",
+      x: 3830, y: 2790, minRadius: 280, radius: 610,
+      tier: 2, count: 6,
       types: ["tank", "shooter", "tank"],
-      rewards: ["armor", "damage", "regen"]
+      rewards: ["armor", "damage", "regen"],
+      ground: "#4b4039", ring: "#b5875c"
     },
     {
-      name: "Old Grove",
-      x: 350, y: 350, minRadius: 70, radius: 230,
-      tier: 3, count: 7,
+      name: "Moonroot Grove",
+      x: 1540, y: 4040, minRadius: 240, radius: 560,
+      tier: 3, count: 5,
       types: ["splitter", "tank", "elite"],
-      rewards: ["regen", "armor", "damage", "health"]
+      rewards: ["regen", "armor", "damage", "health"],
+      ground: "#3d3157", ring: "#9a79d5"
     },
     {
       name: "Sunken Yard",
-      x: 1850, y: 1850, minRadius: 70, radius: 230,
-      tier: 3, count: 7,
+      x: 3590, y: 4100, minRadius: 240, radius: 560,
+      tier: 3, count: 5,
       types: ["runner", "shooter", "elite"],
-      rewards: ["speed", "range", "regen", "damage"]
+      rewards: ["speed", "range", "regen", "damage"],
+      ground: "#553334", ring: "#d37362"
     }
   ];
 
@@ -604,24 +612,30 @@
     decor.length = 0;
     paths.length = 0;
 
-    // Original, simple road system.
-    paths.push({x: 1015, y: 0, w: 170, h: 2200});
-    paths.push({x: 0, y: 1010, w: 2200, h: 170});
-    paths.push({x: 1015, y: 390, w: 680, h: 130});
-    paths.push({x: 480, y: 1500, w: 705, h: 125});
+    const centerX = WORLD.w / 2;
+    const centerY = WORLD.h / 2;
 
-    // Concrete boundary fragments.
-    for (let i = 0; i < 16; i++) {
+    // Crossroads and branches connect the seven distinct combat zones.
+    paths.push({ x: centerX - 105, y: 0, w: 210, h: WORLD.h });
+    paths.push({ x: 0, y: centerY - 105, w: WORLD.w, h: 210 });
+    paths.push({ x: 760, y: 840, w: 1640, h: 120 });
+    paths.push({ x: 2400, y: 700, w: 1570, h: 120 });
+    paths.push({ x: 780, y: 2790, w: 1620, h: 120 });
+    paths.push({ x: 2400, y: 2720, w: 1430, h: 120 });
+    paths.push({ x: 1500, y: 3950, w: 2100, h: 120 });
+
+    // Scatter boundary ruins around the expanded world.
+    for (let i = 0; i < 36; i++) {
       const side = i % 4;
       let x, y, w, h;
-      if (side === 0) { x = rand(120, 1900); y = rand(100, 260); w = rand(100, 270); h = rand(35, 70); }
-      if (side === 1) { x = rand(1900, 2060); y = rand(120, 1900); w = rand(35, 70); h = rand(100, 260); }
-      if (side === 2) { x = rand(120, 1900); y = rand(1900, 2060); w = rand(100, 270); h = rand(35, 70); }
-      if (side === 3) { x = rand(140, 300); y = rand(120, 1900); w = rand(35, 70); h = rand(100, 260); }
+      if (side === 0) { x = rand(140, WORLD.w - 410); y = rand(85, 260); w = rand(110, 280); h = rand(35, 70); }
+      if (side === 1) { x = rand(WORLD.w - 260, WORLD.w - 85); y = rand(140, WORLD.h - 410); w = rand(35, 70); h = rand(110, 280); }
+      if (side === 2) { x = rand(140, WORLD.w - 410); y = rand(WORLD.h - 260, WORLD.h - 85); w = rand(110, 280); h = rand(35, 70); }
+      if (side === 3) { x = rand(85, 260); y = rand(140, WORLD.h - 410); w = rand(35, 70); h = rand(110, 280); }
       decor.push({ type: "stone", x, y, w, h });
     }
 
-    for (let i = 0; i < 95; i++) {
+    for (let i = 0; i < 360; i++) {
       const x = rand(55, WORLD.w - 55);
       const y = rand(55, WORLD.h - 55);
       let onRoad = false;
@@ -631,7 +645,7 @@
           break;
         }
       }
-      if (!onRoad && Math.hypot(x - player.x, y - player.y) > 180) {
+      if (!onRoad && Math.hypot(x - player.x, y - player.y) > 420) {
         decor.push({ type: "tree", x, y, s: rand(.7, 1.35), seed: Math.random() });
       }
     }
@@ -756,8 +770,17 @@
   }
 
   function updateRespawns() {
+    const safeDistanceSq = ENEMY_RESPAWN_SAFE_DISTANCE * ENEMY_RESPAWN_SAFE_DISTANCE;
+
     for (const site of spawnSites) {
       if (!site.alive && site.respawnAt > 0 && gameTime >= site.respawnAt) {
+        const dx = site.x - player.x;
+        const dy = site.y - player.y;
+        if (dx * dx + dy * dy < safeDistanceSq) {
+          site.respawnAt = gameTime + 5;
+          continue;
+        }
+
         spawnFromSite(site);
         spawnBurst(site.x, site.y, "#76d978", 8, 55);
       }
@@ -1146,6 +1169,28 @@
         ctx.fillStyle = "rgba(0,0,0,.08)";
         ctx.fillRect(Math.floor(x - camera.x + (n*7)%26), Math.floor(y - camera.y + (n*11)%26), 3, 3);
       }
+    }
+
+    // Each camp has its own visible biome boundary and ground tint.
+    for (const camp of CAMPS) {
+      const x = Math.floor(camp.x - camera.x);
+      const y = Math.floor(camp.y - camera.y);
+      if (x + camp.radius < -30 || y + camp.radius < -30 || x - camp.radius > viewW + 30 || y - camp.radius > viewH + 30) continue;
+
+      ctx.save();
+      ctx.globalAlpha = .34;
+      ctx.fillStyle = camp.ground;
+      ctx.beginPath();
+      ctx.arc(x, y, camp.radius + 55, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = .7;
+      ctx.strokeStyle = camp.ring;
+      ctx.lineWidth = 7;
+      ctx.setLineDash([14, 18]);
+      ctx.beginPath();
+      ctx.arc(x, y, camp.radius + 20, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
     }
 
     for (const p of paths) {
