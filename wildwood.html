@@ -79,8 +79,11 @@
   }
 
   .bar {
+    position: relative;
+    display: grid;
+    place-items: center;
     width: min(330px, 58vw);
-    height: 18px;
+    height: 22px;
     border: 3px solid #0a0a0a;
     border-radius: 3px;
     overflow: hidden;
@@ -89,15 +92,20 @@
   }
 
   #hpFill {
-    height: 100%;
+    position: absolute;
+    inset: 0 auto 0 0;
     width: 100%;
     background: linear-gradient(#78ed7c, #2fbf4b);
     transition: width .12s linear;
   }
 
   #hpText {
-    margin-top: 4px;
+    position: relative;
+    z-index: 1;
     font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: .04em;
   }
 
   #message {
@@ -257,8 +265,10 @@
 <div id="hud">
   <div class="topbar">
     <div class="card">
-      <div class="bar"><div id="hpFill"></div></div>
-      <div id="hpText">30 / 30 HP</div>
+      <div class="bar">
+        <div id="hpFill"></div>
+        <div id="hpText">30 / 30 HP</div>
+      </div>
       <div id="stats"></div>
     </div>
     <div id="status" class="card"></div>
@@ -355,8 +365,7 @@
     regen: 0,
     attackClock: 0,
     hurtClock: 0,
-    facing: 0,
-    upgrades: 0
+    facing: 0
   };
 
   const ENEMY_TYPES = {
@@ -565,7 +574,6 @@
     player.speed = 175;
     player.attackClock = 0;
     player.hurtClock = 0;
-    player.upgrades = 0;
     player.facing = 0;
 
     enemies.length = 0;
@@ -734,7 +742,6 @@
         break;
     }
 
-    player.upgrades++;
     const data = REWARD_DATA[type];
     logPickup(data.label, data.color);
     spawnBurst(x, y, data.color, 16, 110);
@@ -1162,6 +1169,21 @@
     ctx.fillRect(Math.floor(fx*8 - 2), Math.floor(fy*5 - 3), 4, 4);
 
     ctx.restore();
+
+    const barW = 46;
+    const barH = 7;
+    const barX = x - Math.floor(barW / 2);
+    const barY = y - player.r - 18;
+    const hpRatio = clamp(player.hp / player.maxHp, 0, 1);
+
+    ctx.fillStyle = "rgba(0,0,0,.82)";
+    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+    ctx.fillStyle = "#402326";
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.fillStyle = "#46cf5a";
+    ctx.fillRect(barX, barY, Math.round(barW * hpRatio), barH);
+    ctx.fillStyle = "rgba(255,255,255,.24)";
+    ctx.fillRect(barX, barY, Math.round(barW * hpRatio), 1);
   }
 
   function drawEnemy(e) {
@@ -1378,8 +1400,8 @@
 
     statsEl.innerHTML =
       `DMG ${player.damage.toFixed(0)} &nbsp; ARM ${player.armor}<br>` +
-      `RATE ${(1/player.attackRate).toFixed(2)}/s &nbsp; LENGTH ${Math.round(player.attackRange)}<br>` +
-      `REGEN ${player.regen.toFixed(1)}/s &nbsp; UPGRADES ${player.upgrades}`;
+      `ATK SPEED ${(1/player.attackRate).toFixed(2)}/s &nbsp; ATK RANGE ${Math.round(player.attackRange)}<br>` +
+      `REGEN ${player.regen.toFixed(1)}/s`;
 
     const mins = Math.floor(gameTime / 60);
     const secs = Math.floor(gameTime % 60).toString().padStart(2, "0");
@@ -1423,7 +1445,7 @@
 
   function endGame() {
     running = false;
-    finalScore.textContent = `Survived ${Math.floor(gameTime / 60)}:${Math.floor(gameTime % 60).toString().padStart(2,"0")} · ${kills} kills · ${player.upgrades} upgrades · score ${score}`;
+    finalScore.textContent = `Survived ${Math.floor(gameTime / 60)}:${Math.floor(gameTime % 60).toString().padStart(2,"0")} · ${kills} kills · score ${score}`;
     overEl.style.display = "grid";
   }
 
