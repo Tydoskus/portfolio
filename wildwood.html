@@ -1679,7 +1679,7 @@
     ctx.lineWidth = 3;
     ctx.strokeStyle = "rgba(0,0,0,.92)";
 
-    const label = rewardLabel(e.rewardType, e.maxHp);
+    const label = rewardLabel(e.rewardType, e.maxHp, e.rewardDamage);
     ctx.strokeText(label, x, rewardY);
     ctx.fillStyle = reward.color;
     ctx.fillText(label, x, rewardY);
