@@ -130,6 +130,15 @@
     font-size: 12px;
   }
 
+  .setting-row + .setting-row { margin-top: 9px; }
+
+  .setting-reset { color: #ff9b91; }
+
+  .setting-toggle.danger {
+    background: linear-gradient(#b95c54, #803c38);
+    box-shadow: 0 3px 0 #4b201e;
+  }
+
   .setting-toggle.is-off {
     background: linear-gradient(#8c5555, #683334);
     box-shadow: 0 3px 0 #3d1515;
@@ -389,6 +398,10 @@
           <span>SCREEN SHAKE</span>
           <button id="screenShakeToggle" class="setting-toggle" type="button" aria-pressed="true">ON</button>
         </div>
+        <div class="setting-row setting-reset">
+          <span>RESET SAVE</span>
+          <button id="resetProgressBtn" class="setting-toggle danger" type="button">RESET</button>
+        </div>
       </div>
     </div>
   </div>
@@ -438,6 +451,7 @@
   const settingsBtn = document.getElementById("settingsBtn");
   const settingsPanel = document.getElementById("settingsPanel");
   const screenShakeToggle = document.getElementById("screenShakeToggle");
+  const resetProgressBtn = document.getElementById("resetProgressBtn");
   const messageEl = document.getElementById("message");
   const pickupLog = document.getElementById("pickupLog");
   const startEl = document.getElementById("start");
@@ -831,6 +845,7 @@
           campName: camp.name,
           type: camp.types[i % camp.types.length],
           rewardType: camp.rewards[(i * 2 + campIndex) % camp.rewards.length],
+          leashRange: Math.max(420, camp.radius * .9),
           alive: false,
           respawnAt: 0
         });
@@ -982,7 +997,9 @@
       reward: base.reward,
       rewardDamage: base.damageReward,
       aggroRadius: base.aggro,
+      leashRange: site.leashRange,
       engaged: false,
+      leashing: false,
       attackClock: rand(.2, 1.2),
       hurt: 0,
       dead: false,
@@ -1312,8 +1329,16 @@
       const toPlayerX = player.x - e.x;
       const toPlayerY = player.y - e.y;
       const playerDistance = Math.hypot(toPlayerX, toPlayerY) || 1;
+      const homeDistance = Math.hypot(e.x - e.homeX, e.y - e.homeY);
 
-      if (playerDistance < e.aggroRadius) e.engaged = true;
+      if (e.leashing && homeDistance < 10) e.leashing = false;
+      if (!e.leashing && playerDistance < e.aggroRadius) e.engaged = true;
+
+      if (e.engaged && homeDistance > e.leashRange) {
+        e.engaged = false;
+        e.leashing = true;
+        e.attackClock = Math.max(e.attackClock, .5);
+      }
 
       let targetX;
       let targetY;
@@ -2040,6 +2065,25 @@
     pausedForUpgrade = false;
     bootUpgradeEl.hidden = true;
     last = performance.now();
+  });
+
+  resetProgressBtn.addEventListener("click", () => {
+    if (!confirm("Erase all saved Wildwood progress and start over?")) return;
+
+    try { localStorage.removeItem(SAVE_KEY); } catch {}
+    hasSavedProgress = false;
+    bootsPickup.collected = false;
+    pausedForUpgrade = false;
+    bootUpgradeEl.hidden = true;
+    keys.clear();
+    touchMove.active = false;
+    reset(false);
+    running = true;
+    last = performance.now();
+    startEl.style.display = "none";
+    overEl.style.display = "none";
+    settingsPanel.hidden = true;
+    settingsBtn.setAttribute("aria-expanded", "false");
   });
 
   document.getElementById("playBtn").addEventListener("click", startGame);
