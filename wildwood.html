@@ -384,6 +384,7 @@
   const camera = { x: 0, y: 0, zoom: 1 };
   const particles = [];
   const projectiles = [];
+  const SAVE_KEY = "wildwood-player-progress-v1";
   const enemyShots = [];
   const enemies = [];
   const spawnSites = [];
@@ -419,6 +420,15 @@
     [-4, -1, 1, 6],
     [-6, -2, 2, 6]
   ];
+
+  const bootsPickup = {
+    x: 940,
+    y: 3660,
+    r: 18,
+    collected: false
+  };
+
+  let hasSavedProgress = false;
 
   const player = {
     x: WORLD.w / 2,
@@ -756,7 +766,7 @@
     player.x = WORLD.w / 2;
     player.y = WORLD.h / 2;
 
-    if (!preserveStats) {
+    if (!preserveStats && !hasSavedProgress) {
       player.maxHp = 30;
       player.damage = 4;
       player.attackRate = 0.78;
@@ -794,6 +804,62 @@
 
     showMessage("EXPLORE", "#ffe769");
     updateHud();
+  }
+
+  function saveProgress() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        stats: {
+          maxHp: player.maxHp,
+          damage: player.damage,
+          attackRate: player.attackRate,
+          projectileSpeed: player.projectileSpeed,
+          projectileCount: player.projectileCount,
+          attackRange: player.attackRange,
+          armor: player.armor,
+          regen: player.regen,
+          speed: player.speed
+        },
+        bootsCollected: bootsPickup.collected
+      }));
+    } catch {}
+  }
+
+  function loadProgress() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+      if (!saved || typeof saved !== "object" || !saved.stats || typeof saved.stats !== "object") return;
+
+      const stats = saved.stats;
+      const number = (value, fallback, min, max) =>
+        Number.isFinite(value) ? clamp(value, min, max) : fallback;
+
+      player.maxHp = number(stats.maxHp, player.maxHp, 1, 1000000);
+      player.damage = number(stats.damage, player.damage, 1, 1000000);
+      player.attackRate = number(stats.attackRate, player.attackRate, .16, 10);
+      player.projectileSpeed = number(stats.projectileSpeed, player.projectileSpeed, BASE_PROJECTILE_SPEED, MAX_PROJECTILE_SPEED);
+      player.projectileCount = Math.floor(number(stats.projectileCount, player.projectileCount, 1, 20));
+      player.attackRange = number(stats.attackRange, player.attackRange, BASE_ATTACK_RANGE, 5000);
+      player.armor = number(stats.armor, player.armor, 0, 1000000);
+      player.regen = number(stats.regen, player.regen, 0, 1000000);
+      player.speed = number(stats.speed, player.speed, 1, 2000);
+      player.hp = player.maxHp;
+      bootsPickup.collected = saved.bootsCollected === true;
+      hasSavedProgress = true;
+    } catch {}
+  }
+
+  function updateBootPickup() {
+    if (bootsPickup.collected) return;
+    const dx = player.x - bootsPickup.x;
+    const dy = player.y - bootsPickup.y;
+    const reach = player.r + bootsPickup.r;
+
+    if (dx * dx + dy * dy <= reach * reach) {
+      bootsPickup.collected = true;
+      player.speed *= 1.5;
+      saveProgress();
+    }
   }
 
   function showMessage(text, color = "#fff") {
@@ -969,6 +1035,7 @@
     logPickup(rewardLabel(type, enemyMaxHp, explicitDamageReward), data.color);
     spawnBurst(x, y, data.color, 16, 110);
     score += 20;
+    saveProgress();
   }
 
   function resetBoss() {
@@ -997,6 +1064,7 @@
       player.projectileCount = 2;
       logPickup("DOUBLE SHOT", "#ffe36b");
       showMessage("DOUBLE SHOT", "#ffe36b");
+      saveProgress();
     }
   }
 
@@ -1368,6 +1436,7 @@
     }
 
     updatePlayer(dt);
+    updateBootPickup();
     updateEnemies(dt);
     updateBoss(dt);
     updateProjectiles(dt);
@@ -1491,6 +1560,31 @@
     ctx.beginPath();
     ctx.arc(x, y, player.attackRange, 0, TAU);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBootPickup() {
+    if (bootsPickup.collected) return;
+
+    const visibleW = viewW / camera.zoom;
+    const visibleH = viewH / camera.zoom;
+    const x = Math.floor(bootsPickup.x - camera.x);
+    const y = Math.floor(bootsPickup.y - camera.y);
+    if (x < -40 || y < -40 || x > visibleW + 40 || y > visibleH + 40) return;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = "rgba(255,206,76,.18)";
+    pixelCircle(0, 0, 25);
+    ctx.fillStyle = "#4b2919";
+    ctx.fillRect(-15, -7, 11, 17);
+    ctx.fillRect(4, -7, 11, 17);
+    ctx.fillStyle = "#d58b32";
+    ctx.fillRect(-14, -10, 10, 13);
+    ctx.fillRect(5, -10, 10, 13);
+    ctx.fillStyle = "#ffe47b";
+    ctx.fillRect(-14, 5, 14, 6);
+    ctx.fillRect(3, 5, 14, 6);
     ctx.restore();
   }
 
@@ -1787,6 +1881,7 @@
     for (const p of enemyShots) drawProjectile(p, true);
     for (const e of enemies) drawEnemy(e);
     drawBoss();
+    drawBootPickup();
     drawPlayer();
     drawParticles();
 
@@ -1921,6 +2016,7 @@
   canvas.addEventListener("touchend", endTouch, {passive:false});
   canvas.addEventListener("touchcancel", endTouch, {passive:false});
 
+  loadProgress();
   makeWorld();
   updateCamera(1);
   render();
