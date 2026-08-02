@@ -93,6 +93,18 @@
     text-shadow: 0 2px 0 #000;
   }
 
+  .auto-attack-button {
+    position: absolute;
+    top: 0;
+    right: 52px;
+  }
+
+  .settings-button.is-off {
+    background: linear-gradient(#8c5555, #683334);
+    box-shadow: 0 4px 0 #3d1515;
+    color: #f5c7c4;
+  }
+
   .settings-panel {
     position: absolute;
     top: 50px;
@@ -391,6 +403,7 @@
       <div id="stats"></div>
     </div>
     <div class="settings-wrap">
+      <button id="autoAttackBtn" class="settings-button auto-attack-button" type="button" aria-label="Toggle auto attack" aria-pressed="true">⚔</button>
       <button id="settingsBtn" class="settings-button" type="button" aria-label="Open settings" aria-expanded="false">⚙</button>
       <div id="settingsPanel" class="settings-panel card" hidden>
         <div class="settings-title">SETTINGS</div>
@@ -449,6 +462,7 @@
   const hpText = document.getElementById("hpText");
   const statsEl = document.getElementById("stats");
   const settingsBtn = document.getElementById("settingsBtn");
+  const autoAttackBtn = document.getElementById("autoAttackBtn");
   const settingsPanel = document.getElementById("settingsPanel");
   const screenShakeToggle = document.getElementById("screenShakeToggle");
   const resetProgressBtn = document.getElementById("resetProgressBtn");
@@ -495,6 +509,7 @@
   let screenShakeEnabled = true;
   let messageClock = 0;
   let pausedForUpgrade = false;
+  let autoAttackEnabled = true;
 
   const touchMove = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
 
@@ -1315,7 +1330,7 @@
       player.hp = Math.min(player.maxHp, player.hp + player.regen * dt);
     }
 
-    attackNearest(dt);
+    if (autoAttackEnabled) attackNearest(dt);
   }
 
   function updateEnemies(dt) {
@@ -2049,6 +2064,11 @@
     screenShakeToggle.classList.toggle("is-off", !screenShakeEnabled);
   }
 
+  function updateAutoAttackSetting() {
+    autoAttackBtn.setAttribute("aria-pressed", String(autoAttackEnabled));
+    autoAttackBtn.classList.toggle("is-off", !autoAttackEnabled);
+  }
+
   settingsBtn.addEventListener("click", () => {
     const opening = settingsPanel.hidden;
     settingsPanel.hidden = !opening;
@@ -2059,6 +2079,11 @@
     screenShakeEnabled = !screenShakeEnabled;
     if (!screenShakeEnabled) screenShake = 0;
     updateScreenShakeSetting();
+  });
+
+  autoAttackBtn.addEventListener("click", () => {
+    autoAttackEnabled = !autoAttackEnabled;
+    updateAutoAttackSetting();
   });
 
   bootUpgradeClose.addEventListener("click", () => {
