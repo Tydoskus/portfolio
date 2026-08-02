@@ -487,7 +487,7 @@
   const BASE_PROJECTILE_SPEED = 390;
   const MAX_PROJECTILE_SPEED = BASE_PROJECTILE_SPEED * 7;
   const BASE_ATTACK_RANGE = 155;
-  const MIN_CAMERA_ZOOM = .58;
+  const MIN_CAMERA_ZOOM = .5;
   const ENEMY_SPEED_MULTIPLIER = 2;
   const RANGED_PROJECTILE_SPEED = 165 * 1.5;
   const PLAYER_SPRITE_X_OFFSETS = [
@@ -1136,7 +1136,6 @@
     bossRain.length = 0;
     score += 5000;
     spawnBurst(boss.x, boss.y, "#ff7b42", 64, 230);
-    screenShake = Math.max(screenShake, 16);
 
     if (!boss.rewardGranted) {
       boss.rewardGranted = true;
@@ -1252,7 +1251,6 @@
 
     applyReward(e.rewardType, e.x, e.y, e.maxHp, e.rewardDamage);
     spawnBurst(e.x, e.y, base.color, base.elite ? 28 : 12, base.elite ? 150 : 90);
-    screenShake = Math.max(screenShake, e.type === "elite" ? 10 : 3);
   }
 
   function damagePlayer(amount) {
@@ -1491,7 +1489,8 @@
   }
 
   function updateCamera(dt) {
-    const targetZoom = clamp(BASE_ATTACK_RANGE / player.attackRange, MIN_CAMERA_ZOOM, 1);
+    const rangeIncrease = player.attackRange / BASE_ATTACK_RANGE - 1;
+    const targetZoom = clamp(1 - rangeIncrease * .5, MIN_CAMERA_ZOOM, 1);
     const zoomFollow = 1 - Math.pow(.0008, dt);
     camera.zoom += (targetZoom - camera.zoom) * zoomFollow;
 
