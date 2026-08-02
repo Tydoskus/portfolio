@@ -379,7 +379,7 @@
   const BOSS_CONE_RANGE = 760;
   const BOSS_CONE_HALF_ANGLE = .42;
   const keys = new Set();
-  const camera = { x: 0, y: 0 };
+  const camera = { x: 0, y: 0, zoom: 1 };
   const particles = [];
   const projectiles = [];
   const enemyShots = [];
@@ -407,6 +407,8 @@
 
   const BASE_PROJECTILE_SPEED = 390;
   const MAX_PROJECTILE_SPEED = BASE_PROJECTILE_SPEED * 7;
+  const BASE_ATTACK_RANGE = 155;
+  const MIN_CAMERA_ZOOM = .58;
   const ENEMY_SPEED_MULTIPLIER = 2;
   const RANGED_PROJECTILE_SPEED = 165 * 1.5;
   const PLAYER_SPRITE_X_OFFSETS = [
@@ -427,7 +429,7 @@
     attackRate: 0.78,
     projectileSpeed: BASE_PROJECTILE_SPEED,
     projectileCount: 1,
-    attackRange: 155,
+    attackRange: BASE_ATTACK_RANGE,
     armor: 0,
     regen: 0,
     attackClock: 0,
@@ -493,6 +495,12 @@
       hp: 92, speed: 46, damage: 13, r: 27,
       color: "#d47a2b", outline: "#5c2b12", reward: 30,
       elite: true, aggro: 300
+    },
+    warden: {
+      name: "Dread Warden",
+      hp: 1000, speed: 27, damage: 75, r: 36,
+      color: "#a52e3a", outline: "#47101a", reward: 180,
+      elite: true, aggro: 350, damageReward: 12
     }
   };
 
@@ -505,13 +513,13 @@
     regen:  { color: "#ff7ccb", label: "+0.3 HP/SEC" }
   };
 
-  function damageRewardForHp(maxHp) {
-    return Math.max(1, Math.floor(maxHp / 12));
+  function damageRewardForHp(maxHp, explicitReward) {
+    return explicitReward ?? Math.max(1, Math.floor(maxHp / 12));
   }
 
-  function rewardLabel(type, maxHp) {
+  function rewardLabel(type, maxHp, explicitReward) {
     return type === "damage"
-      ? `+${damageRewardForHp(maxHp)} DAMAGE`
+      ? `+${damageRewardForHp(maxHp, explicitReward)} DAMAGE`
       : REWARD_DATA[type].label;
   }
 
@@ -552,7 +560,7 @@
       name: "Cinder Quarry",
       x: 3830, y: 2790, minRadius: 280, radius: 610,
       count: 6,
-      types: ["tank", "shooter", "tank"],
+      types: ["tank", "shooter", "tank", "warden"],
       rewards: ["armor", "damage", "regen"],
       ground: "#4b4039", ring: "#b5875c"
     },
@@ -734,7 +742,7 @@
       player.attackRate = 0.78;
       player.projectileSpeed = BASE_PROJECTILE_SPEED;
       player.projectileCount = 1;
-      player.attackRange = 155;
+      player.attackRange = BASE_ATTACK_RANGE;
       player.armor = 0;
       player.regen = 0;
       player.speed = 175;
@@ -807,6 +815,7 @@
       speed: base.speed * ENEMY_SPEED_MULTIPLIER,
       damage: base.damage,
       reward: base.reward,
+      rewardDamage: base.damageReward,
       aggroRadius: base.aggro,
       engaged: false,
       attackClock: rand(.2, 1.2),
@@ -912,10 +921,10 @@
     }
   }
 
-  function applyReward(type, x, y, enemyMaxHp) {
+  function applyReward(type, x, y, enemyMaxHp, explicitDamageReward) {
     switch (type) {
       case "damage":
-        player.damage += damageRewardForHp(enemyMaxHp);
+        player.damage += damageRewardForHp(enemyMaxHp, explicitDamageReward);
         break;
       case "health":
         player.maxHp += 6;
@@ -937,7 +946,7 @@
     }
 
     const data = REWARD_DATA[type];
-    logPickup(rewardLabel(type, enemyMaxHp), data.color);
+    logPickup(rewardLabel(type, enemyMaxHp, explicitDamageReward), data.color);
     spawnBurst(x, y, data.color, 16, 110);
     score += 20;
   }
@@ -1074,8 +1083,8 @@
       site.respawnAt = gameTime + 30;
     }
 
-    applyReward(e.rewardType, e.x, e.y, e.maxHp);
-    spawnBurst(e.x, e.y, base.color, e.type === "elite" ? 28 : 12, e.type === "elite" ? 150 : 90);
+    applyReward(e.rewardType, e.x, e.y, e.maxHp, e.rewardDamage);
+    spawnBurst(e.x, e.y, base.color, base.elite ? 28 : 12, base.elite ? 150 : 90);
     screenShake = Math.max(screenShake, e.type === "elite" ? 10 : 3);
   }
 
@@ -1315,8 +1324,14 @@
   }
 
   function updateCamera(dt) {
-    const targetX = clamp(player.x - viewW / 2, 0, Math.max(0, WORLD.w - viewW));
-    const targetY = clamp(player.y - viewH / 2, 0, Math.max(0, WORLD.h - viewH));
+    const targetZoom = clamp(BASE_ATTACK_RANGE / player.attackRange, MIN_CAMERA_ZOOM, 1);
+    const zoomFollow = 1 - Math.pow(.0008, dt);
+    camera.zoom += (targetZoom - camera.zoom) * zoomFollow;
+
+    const visibleW = viewW / camera.zoom;
+    const visibleH = viewH / camera.zoom;
+    const targetX = clamp(player.x - visibleW / 2, 0, Math.max(0, WORLD.w - visibleW));
+    const targetY = clamp(player.y - visibleH / 2, 0, Math.max(0, WORLD.h - visibleH));
     const follow = 1 - Math.pow(.00006, dt);
     camera.x += (targetX - camera.x) * follow;
     camera.y += (targetY - camera.y) * follow;
@@ -1343,15 +1358,17 @@
   }
 
   function drawGround() {
+    const visibleW = viewW / camera.zoom;
+    const visibleH = viewH / camera.zoom;
     ctx.fillStyle = "#102b19";
-    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.fillRect(0, 0, visibleW, visibleH);
 
     const tile = 32;
     const sx = Math.floor(camera.x / tile) * tile;
     const sy = Math.floor(camera.y / tile) * tile;
 
-    for (let y = sy; y < camera.y + viewH + tile; y += tile) {
-      for (let x = sx; x < camera.x + viewW + tile; x += tile) {
+    for (let y = sy; y < camera.y + visibleH + tile; y += tile) {
+      for (let x = sx; x < camera.x + visibleW + tile; x += tile) {
         const n = ((x * 13 + y * 7) >>> 5) & 3;
         ctx.fillStyle = ["#12301c", "#102d1a", "#14331e", "#112f1b"][n];
         ctx.fillRect(Math.floor(x - camera.x), Math.floor(y - camera.y), tile, tile);
@@ -1375,9 +1392,11 @@
   }
 
   function drawStone(o) {
+    const visibleW = viewW / camera.zoom;
+    const visibleH = viewH / camera.zoom;
     const x = Math.floor(o.x - camera.x);
     const y = Math.floor(o.y - camera.y);
-    if (x + o.w < -20 || y + o.h < -20 || x > viewW + 20 || y > viewH + 20) return;
+    if (x + o.w < -20 || y + o.h < -20 || x > visibleW + 20 || y > visibleH + 20) return;
 
     ctx.fillStyle = "#777e7b";
     ctx.fillRect(x, y, o.w, o.h);
@@ -1397,10 +1416,12 @@
   }
 
   function drawTree(o) {
+    const visibleW = viewW / camera.zoom;
+    const visibleH = viewH / camera.zoom;
     const x = Math.floor(o.x - camera.x);
     const y = Math.floor(o.y - camera.y);
     const s = o.s;
-    if (x < -55 || y < -70 || x > viewW + 55 || y > viewH + 55) return;
+    if (x < -55 || y < -70 || x > visibleW + 55 || y > visibleH + 55) return;
 
     ctx.fillStyle = "#815844";
     ctx.fillRect(Math.floor(x - 5*s), Math.floor(y + 7*s), Math.floor(10*s), Math.floor(24*s));
@@ -1570,10 +1591,12 @@
   }
 
   function drawEnemy(e) {
+    const visibleW = viewW / camera.zoom;
+    const visibleH = viewH / camera.zoom;
     const x = Math.floor(e.x - camera.x);
     const y = Math.floor(e.y - camera.y);
     const base = ENEMY_TYPES[e.type];
-    if (x < -80 || y < -80 || x > viewW + 80 || y > viewH + 80) return;
+    if (x < -80 || y < -80 || x > visibleW + 80 || y > visibleH + 80) return;
 
     ctx.save();
     ctx.translate(x, y);
@@ -1608,7 +1631,7 @@
       ctx.fillStyle = "#e3fdff";
       ctx.fillRect(-5, -4, 3, 3);
       ctx.fillRect(3, -4, 3, 3);
-    } else if (e.type === "elite") {
+    } else if (base.elite) {
       ctx.fillStyle = "#ffe37e";
       ctx.fillRect(-14, -14, 28, 6);
       ctx.fillStyle = "#3e180d";
@@ -1711,7 +1734,7 @@
 
     ctx.strokeStyle = "rgba(255,255,255,.52)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(x + camera.x*sx, y + camera.y*sy, viewW*sx, viewH*sy);
+    ctx.strokeRect(x + camera.x*sx, y + camera.y*sy, (viewW / camera.zoom)*sx, (viewH / camera.zoom)*sy);
     ctx.restore();
     ctx.restore();
   }
@@ -1733,6 +1756,7 @@
     const sx = screenShakeEnabled && screenShake > .2 ? rand(-screenShake, screenShake) : 0;
     const sy = screenShakeEnabled && screenShake > .2 ? rand(-screenShake, screenShake) : 0;
     ctx.translate(sx, sy);
+    ctx.scale(camera.zoom, camera.zoom);
 
     drawGround();
     drawDecor();
@@ -1745,6 +1769,9 @@
     drawBoss();
     drawPlayer();
     drawParticles();
+
+    ctx.restore();
+
     drawMinimap();
 
     if (flash > 0) {
@@ -1758,8 +1785,6 @@
     g.addColorStop(1, "rgba(0,0,0,.33)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, viewW, viewH);
-
-    ctx.restore();
   }
 
   function updateHud() {
