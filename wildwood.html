@@ -521,6 +521,7 @@
 
   const BASE_PROJECTILE_SPEED = 390;
   const MAX_PROJECTILE_SPEED = BASE_PROJECTILE_SPEED * 7;
+  const PLAYER_KNOCKBACK_FORCE = 90;
   const BASE_ATTACK_RANGE = 155;
   const MIN_CAMERA_ZOOM = .5;
   const ENEMY_SPEED_MULTIPLIER = 2;
@@ -553,6 +554,7 @@
     projectileSpeed: BASE_PROJECTILE_SPEED,
     projectileCount: 1,
     attackRange: BASE_ATTACK_RANGE,
+    knockback: 0,
     armor: 0,
     regen: 0,
     attackClock: 0,
@@ -1477,10 +1479,11 @@
         target.hurt = .12;
         p.life = 0;
 
-        if (!target.isBoss) {
+        if (!target.isBoss && player.knockback > 0) {
           const ang = Math.atan2(p.vy, p.vx);
-          target.vx += Math.cos(ang) * 90;
-          target.vy += Math.sin(ang) * 90;
+          const force = PLAYER_KNOCKBACK_FORCE * player.knockback;
+          target.vx += Math.cos(ang) * force;
+          target.vy += Math.sin(ang) * force;
         }
         spawnBurst(p.x, p.y, "#fff0a1", 5, 52);
         if (target.hp <= 0) {
